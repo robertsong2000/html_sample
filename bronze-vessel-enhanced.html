@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>青铜器制作科普 - 增强版动画演示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #8B4513 0%, #CD853F 50%, #DEB887 100%);
+            min-height: 100vh;
+            font-family: 'Microsoft YaHei', 'Arial', sans-serif;
+            overflow-x: hidden;
+            color: #2c1810;
+        }
+
+        .header {
+            background: linear-gradient(90deg, #8B4513, #A0522D);
+            padding: 30px 20px;
+            text-align: center;
+            color: #FFF8DC;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="50" text-anchor="middle" fill="rgba(255,255,255,0.1)" font-size="80">鼎</text></svg>') repeat;
+            opacity: 0.1;
+        }
+
+        .main-title {
+            font-size: 48px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+            position: relative;
+            z-index: 1;
+        }
+
+        .subtitle {
+            font-size: 20px;
+            opacity: 0.9;
+            font-weight: 300;
+            position: relative;
+            z-index: 1;
+        }
+
+        .main-container {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 20px;
+            gap: 30px;
+        }
+
+        .process-section {
+            flex: 2;
+            background: rgba(255, 248, 220, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border: 3px solid #8B4513;
+        }
+
+        .education-section {
+            flex: 1;
+            background: rgba(255, 248, 220, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border: 3px solid #8B4513;
+        }
+
+        .section-title {
+            font-size: 28px;
+            color: #8B4513;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+        }
+
+        .process-timeline {
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .timeline-line {
+            position: absolute;
+            left: 30px;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: linear-gradient(180deg, #8B4513, #CD853F);
+            border-radius: 2px;
+        }
+
+        .process-step {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 40px;
+            position: relative;
+            opacity: 0.5;
+            transition: all 0.5s ease;
+            cursor: pointer;
+        }
+
+        .process-step.active {
+            opacity: 1;
+            transform: scale(1.02);
+        }
+
+        .step-number {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #8B4513, #A0522D);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+            margin-right: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            flex-shrink: 0;
+            position: relative;
+            z-index: 2;
+        }
+
+        .step-content {
+            flex: 1;
+            background: rgba(139, 69, 19, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            border-left: 4px solid #8B4513;
+        }
+
+        .step-title {
+            font-size: 20px;
+            color: #8B4513;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .step-description {
+            color: #5D4037;
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        .visualization-area {
+            background: linear-gradient(135deg, #2c1810, #3e2723);
+            border-radius: 15px;
+            height: 400px;
+            margin-top: 20px;
+            position: relative;
+            overflow: hidden;
+            border: 3px solid #8B4513;
+            box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.5);
+        }
+
+        .workshop {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><pattern id="wood" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse"><rect width="40" height="40" fill="%23654321"/><path d="M0 20h40M20 0v40" stroke="%234A3018" stroke-width="1" opacity="0.5"/></pattern></defs><rect width="400" height="400" fill="url(%23wood)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .craftsman {
+            position: absolute;
+            bottom: 20px;
+            left: 50px;
+            width: 60px;
+            height: 80px;
+            background: #8B4513;
+            border-radius: 30px 30px 0 0;
+            transition: all 0.5s ease;
+        }
+
+        .craftsman::before {
+            content: '👨‍🔧';
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 30px;
+        }
+
+        .craftsman.working {
+            animation: craftsmanWork 1s ease-in-out infinite;
+        }
+
+        @keyframes craftsmanWork {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .bronze-vessel {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 1s ease;
+        }
+
+        .vessel-clay {
+            width: 120px;
+            height: 150px;
+            background: linear-gradient(135deg, #D2691E, #CD853F, #DEB887);
+            border-radius: 10px 10px 60px 60px;
+            position: relative;
+            box-shadow: 
+                inset 0 0 20px rgba(0, 0, 0, 0.3),
+                0 0 30px rgba(210, 105, 30, 0.5);
+            animation: clayTexture 3s ease-in-out infinite;
+        }
+
+        @keyframes clayTexture {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.1); }
+        }
+
+        .vessel-clay::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 10px;
+            right: 10px;
+            height: 3px;
+            background: #8B4513;
+            border-radius: 2px;
+        }
+
+        .vessel-clay::after {
+            content: '';
+            position: absolute;
+            bottom: 30px;
+            left: 15px;
+            right: 15px;
+            height: 3px;
+            background: #8B4513;
+            border-radius: 2px;
+        }
+
+        .vessel-clay.carving {
+            animation: carving 0.5s ease-in-out infinite;
+        }
+
+        @keyframes carving {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+
+        .vessel-bronze {
+            width: 120px;
+            height: 150px;
+            background: linear-gradient(135deg, #B87333, #CD7F32, #DAA520);
+            border-radius: 10px 10px 60px 60px;
+            position: relative;
+            box-shadow: 
+                0 0 40px rgba(184, 115, 51, 0.8),
+                inset 0 0 25px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            transform: translate(-50%, -50%) scale(0.8);
+        }
+
+        .vessel-bronze.shining {
+            animation: bronzeShine 2s ease-in-out infinite;
+        }
+
+        @keyframes bronzeShine {
+            0%, 100% { 
+                filter: brightness(1);
+                box-shadow: 0 0 40px rgba(184, 115, 51, 0.8), inset 0 0 25px rgba(0, 0, 0, 0.4);
+            }
+            50% { 
+                filter: brightness(1.3);
+                box-shadow: 0 0 60px rgba(218, 165, 32, 1), inset 0 0 30px rgba(0, 0, 0, 0.5);
+            }
+        }
+
+        .vessel-bronze::before {
+            content: '🐉';
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 24px;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+
+        .vessel-bronze engraved::before {
+            opacity: 1;
+            animation: engravingGlow 1s ease-in-out infinite;
+        }
+
+        @keyframes engravingGlow {
+            0%, 100% { text-shadow: 0 0 5px rgba(255, 215, 0, 0.8); }
+            50% { text-shadow: 0 0 15px rgba(255, 215, 0, 1); }
+        }
+
+        .mold-pieces {
+            position: absolute;
+            width: 140px;
+            height: 170px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0;
+            transition: all 0.8s ease;
+        }
+
+        .mold-outer {
+            position: absolute;
+            width: 140px;
+            height: 170px;
+            border: 8px solid #8B4513;
+            border-radius: 15px;
+            background: linear-gradient(135deg, #A0522D, #8B4513);
+            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .mold-inner {
+            position: absolute;
+            width: 120px;
+            height: 150px;
+            left: 10px;
+            top: 10px;
+            border: 4px solid #A0522D;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #CD853F, #DEB887);
+            box-shadow: inset 0 0 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .mold-pieces.assembling {
+            animation: moldAssemble 1s ease-in-out;
+        }
+
+        @keyframes moldAssemble {
+            0% { transform: translate(-50%, -50%) scale(0.5) rotate(-10deg); }
+            50% { transform: translate(-50%, -50%) scale(1.1) rotate(5deg); }
+            100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+        }
+
+        .furnace {
+            position: absolute;
+            right: 50px;
+            bottom: 20px;
+            width: 100px;
+            height: 120px;
+            background: linear-gradient(135deg, #2c1810, #1a0a0a);
+            border-radius: 10px;
+            opacity: 0;
+            transition: all 0.8s ease;
+        }
+
+        .furnace.active {
+            opacity: 1;
+        }
+
+        .furnace::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            bottom: 10px;
+            background: radial-gradient(circle, #ff4500, #ff6347, #8b0000);
+            border-radius: 5px;
+            opacity: 0;
+            animation: furnaceGlow 2s ease-in-out infinite;
+        }
+
+        .furnace.active::before {
+            opacity: 1;
+        }
+
+        @keyframes furnaceGlow {
+            0%, 100% { 
+                opacity: 0.8;
+                transform: scale(1);
+            }
+            50% { 
+                opacity: 1;
+                transform: scale(1.1);
+            }
+        }
+
+        .flames {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 40px;
+            opacity: 0;
+        }
+
+        .flames.active {
+            opacity: 1;
+            animation: flicker 0.5s ease-in-out infinite;
+        }
+
+        @keyframes flicker {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.1); }
+        }
+
+        .flame {
+            position: absolute;
+            bottom: 0;
+            width: 8px;
+            height: 20px;
+            background: linear-gradient(to top, #ff4500, #ffa500, #ffff00);
+            border-radius: 50% 50% 0 0;
+            animation: flameDance 1s ease-in-out infinite;
+        }
+
+        .flame:nth-child(1) { left: 10px; animation-delay: 0s; }
+        .flame:nth-child(2) { left: 26px; animation-delay: 0.2s; height: 25px; }
+        .flame:nth-child(3) { left: 42px; animation-delay: 0.4s; }
+
+        @keyframes flameDance {
+            0%, 100% { transform: scaleY(1) rotate(-5deg); }
+            50% { transform: scaleY(1.3) rotate(5deg); }
+        }
+
+        .liquid-metal {
+            position: absolute;
+            width: 80px;
+            height: 60px;
+            background: linear-gradient(135deg, #ff6347, #ffa500, #ffd700);
+            border-radius: 50%;
+            opacity: 0;
+            filter: blur(2px);
+            box-shadow: 0 0 20px rgba(255, 165, 0, 0.8);
+        }
+
+        .liquid-metal.pouring {
+            animation: pourMetal 2s ease-in-out;
+        }
+
+        @keyframes pourMetal {
+            0% {
+                opacity: 0;
+                transform: translate(-50%, -50%) scale(0.5);
+            }
+            20% {
+                opacity: 1;
+                transform: translate(-50%, -50%) scale(1);
+            }
+            80% {
+                opacity: 1;
+                transform: translate(-50%, 50%) scale(0.8);
+            }
+            100% {
+                opacity: 0;
+                transform: translate(-50%, 100%) scale(0.5);
+            }
+        }
+
+        .sparks {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .spark {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: radial-gradient(circle, #ffd700, #ff6347);
+            border-radius: 50%;
+            opacity: 0;
+        }
+
+        .spark.flying {
+            animation: sparkFly 1s ease-out forwards;
+        }
+
+        @keyframes sparkFly {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0) translate(var(--dx), var(--dy));
+            }
+        }
+
+        .tools {
+            position: absolute;
+            left: 20px;
+            top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            opacity: 0;
+            transition: all 0.5s ease;
+        }
+
+        .tools.active {
+            opacity: 1;
+        }
+
+        .tool {
+            width: 40px;
+            height: 40px;
+            background: #8B4513;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .tool:hover {
+            transform: scale(1.1);
+        }
+
+        .tool.in-use {
+            animation: toolUse 0.5s ease-in-out infinite;
+        }
+
+        @keyframes toolUse {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(10deg); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .control-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #8B4513, #A0522D);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
+        }
+
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139, 69, 19, 0.5);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .progress-bar {
+            background: rgba(139, 69, 19, 0.2);
+            border-radius: 10px;
+            height: 20px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #8B4513, #CD853F);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+            border-radius: 10px;
+        }
+
+        .progress-text {
+            text-align: center;
+            color: #8B4513;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .main-title {
+                font-size: 36px;
+            }
+            
+            .subtitle {
+                font-size: 18px;
+            }
+            
+            .visualization-area {
+                height: 300px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .process-step {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+            
+            .step-number {
+                margin-right: 0;
+                margin-bottom: 15px;
+            }
+            
+            .timeline-line {
+                left: 50%;
+                transform: translateX(-50%);
+            }
+            
+            .controls {
+                justify-content: center;
+            }
+            
+            .craftsman {
+                width: 40px;
+                height: 60px;
+            }
+            
+            .furnace {
+                width: 80px;
+                height: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="main-title">🏺 青铜器制作科普</h1>
+        <p class="subtitle">增强版动画演示 - 体验真实的古代工艺</p>
+    </div>
+
+    <div class="main-container">
+        <div class="process-section">
+            <h2 class="section-title">
+                <span>🔨</span>
+                青铜鼎制作过程
+            </h2>
+
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">准备开始制作青铜鼎</div>
+
+            <div class="process-timeline">
+                <div class="timeline-line"></div>
+                
+                <div class="process-step" data-step="1">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3 class="step-title">🎨 设计图案</h3>
+                        <p class="step-description">工匠首先在纸上或蜡板上设计青铜鼎的图案和纹饰，包括龙纹、凤纹、云纹等传统图案。</p>
+                    </div>
+                </div>
+
+                <div class="process-step" data-step="2">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3 class="step-title">🗿 制作陶范</h3>
+                        <p class="step-description">用黏土制作外范和内范，外范是外部形状，内范是内部空间，中间的空腔就是青铜鼎的形状。</p>
+                    </div>
+                </div>
+
+                <div class="process-step" data-step="3">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3 class="step-title">🔥 熔化青铜</h3>
+                        <p class="step-description">将铜、锡、铅等金属按比例放入熔炉中熔化，温度需要达到1000°C以上，制成青铜合金。</p>
+                    </div>
+                </div>
+
+                <div class="process-step" data-step="4">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3 class="step-title">⚗️ 浇铸成型</h3>
+                        <p class="step-description">将熔化的青铜液体倒入陶范的空腔中，等待冷却凝固，青铜就会变成我们想要的形状。</p>
+                    </div>
+                </div>
+
+                <div class="process-step" data-step="5">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3 class="step-title">🔨 打磨修整</h3>
+                        <p class="step-description">冷却后打破陶范，取出青铜鼎，然后用砂纸和工具打磨表面，去除毛刺和不平整的地方。</p>
+                    </div>
+                </div>
+
+                <div class="process-step" data-step="6">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3 class="step-title">✨ 雕刻装饰</h3>
+                        <p class="step-description">在青铜鼎表面精细雕刻各种纹饰，有的还会镶嵌金银宝石，让青铜器更加精美华丽。</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="visualization-area" id="visualizationArea">
+                <div class="workshop"></div>
+                
+                <div class="craftsman" id="craftsman"></div>
+                
+                <div class="tools" id="tools">
+                    <div class="tool" id="tool1">✏️</div>
+                    <div class="tool" id="tool2">🔨</div>
+                    <div class="tool" id="tool3">🪚</div>
+                </div>
+                
+                <div class="bronze-vessel" id="bronzeVessel">
+                    <div class="vessel-clay" id="vesselClay"></div>
+                    <div class="vessel-bronze" id="vesselBronze"></div>
+                </div>
+                
+                <div class="mold-pieces" id="moldPieces">
+                    <div class="mold-outer"></div>
+                    <div class="mold-inner"></div>
+                </div>
+                
+                <div class="furnace" id="furnace">
+                    <div class="flames" id="flames">
+                        <div class="flame"></div>
+                        <div class="flame"></div>
+                        <div class="flame"></div>
+                    </div>
+                </div>
+                
+                <div class="liquid-metal" id="liquidMetal"></div>
+                
+                <div class="sparks" id="sparks"></div>
+            </div>
+
+            <div class="controls">
+                <button class="control-btn" id="startBtn">🚀 开始制作</button>
+                <button class="control-btn" id="nextBtn">⏭️ 下一步</button>
+                <button class="control-btn" id="resetBtn">🔄 重新开始</button>
+                <button class="control-btn" id="autoBtn">⚡ 自动演示</button>
+            </div>
+        </div>
+
+        <div class="education-section">
+            <h2 class="section-title">
+                <span>📚</span>
+                青铜器小知识
+            </h2>
+
+            <div class="info-card" style="background: linear-gradient(135deg, #DEB887, #F4A460); border-radius: 15px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #8B4513; color: #3E2723;">
+                <h3 style="font-size: 18px; margin-bottom: 10px; color: #8B4513; display: flex; align-items: center; gap: 8px;">🏺 什么是青铜器？</h3>
+                <p style="font-size: 14px; line-height: 1.6;">青铜器是古代用青铜合金制作的器物，主要成分是铜和锡。中国在商周时期创造了灿烂的青铜文明，青铜鼎是最重要的礼器之一。</p>
+            </div>
+
+            <div class="info-card" style="background: linear-gradient(135deg, #DEB887, #F4A460); border-radius: 15px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #8B4513; color: #3E2723;">
+                <h3 style="font-size: 18px; margin-bottom: 10px; color: #8B4513; display: flex; align-items: center; gap: 8px;">🔬 青铜的成分</h3>
+                <p style="font-size: 14px; line-height: 1.6;">古代青铜器的配方很讲究：<br>
+                • 铜：85-90%<br>
+                • 锡：5-10%<br>
+                • 铅：2-5%<br>
+                这样的比例能让青铜既坚硬又容易铸造。</p>
+            </div>
+
+            <div class="info-card" style="background: linear-gradient(135deg, #DEB887, #F4A460); border-radius: 15px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #8B4513; color: #3E2723;">
+                <h3 style="font-size: 18px; margin-bottom: 10px; color: #8B4513; display: flex; align-items: center; gap: 8px;">🛠️ 古代工具</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-top: 20px;">
+                    <div style="background: rgba(139, 69, 19, 0.1); border-radius: 10px; padding: 15px; text-align: center; border: 2px solid #CD853F; transition: all 0.3s ease;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">🔥</div>
+                        <div style="font-size: 12px; color: #8B4513; font-weight: bold;">熔炉</div>
+                    </div>
+                    <div style="background: rgba(139, 69, 19, 0.1); border-radius: 10px; padding: 15px; text-align: center; border: 2px solid #CD853F; transition: all 0.3s ease;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">🏺</div>
+                        <div style="font-size: 12px; color: #8B4513; font-weight: bold;">陶范</div>
+                    </div>
+                    <div style="background: rgba(139, 69, 19, 0.1); border-radius: 10px; padding: 15px; text-align: center; border: 2px solid #CD853F; transition: all 0.3s ease;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">🔨</div>
+                        <div style="font-size: 12px; color: #8B4513; font-weight: bold;">铁锤</div>
+                    </div>
+                    <div style="background: rgba(139, 69, 19, 0.1); border-radius: 10px; padding: 15px; text-align: center; border: 2px solid #CD853F; transition: all 0.3s ease;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">✏️</div>
+                        <div style="font-size: 12px; color: #8B4513; font-weight: bold;">刻刀</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fun-fact" style="background: linear-gradient(135deg, #FFD700, #FFA500); border-radius: 15px; padding: 20px; margin-top: 20px; color: #3E2723; border: 2px solid #FF8C00;">
+                <h4 style="color: #8B4513; margin-bottom: 10px; font-size: 16px;">💡 动画特色</h4>
+                <p style="font-size: 14px; line-height: 1.6;">这个增强版包含了：<br>
+                • 真实的材质渐变效果<br>
+                • 动态火焰熔炉动画<br>
+                • 液体金属流动效果<br>
+                • 火花飞溅特效<br>
+                • 工匠工作动画</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class EnhancedBronzeVesselMaking {
+            constructor() {
+                this.currentStep = 0;
+                this.totalSteps = 6;
+                this.isAutoMode = false;
+                this.autoInterval = null;
+                
+                this.steps = document.querySelectorAll('.process-step');
+                this.startBtn = document.getElementById('startBtn');
+                this.nextBtn = document.getElementById('nextBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.autoBtn = document.getElementById('autoBtn');
+                this.progressFill = document.getElementById('progressFill');
+                this.progressText = document.getElementById('progressText');
+                this.vesselClay = document.getElementById('vesselClay');
+                this.vesselBronze = document.getElementById('vesselBronze');
+                this.moldPieces = document.getElementById('moldPieces');
+                this.furnace = document.getElementById('furnace');
+                this.flames = document.getElementById('flames');
+                this.liquidMetal = document.getElementById('liquidMetal');
+                this.sparks = document.getElementById('sparks');
+                this.craftsman = document.getElementById('craftsman');
+                this.tools = document.getElementById('tools');
+                this.tool1 = document.getElementById('tool1');
+                this.tool2 = document.getElementById('tool2');
+                this.tool3 = document.getElementById('tool3');
+                
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.updateDisplay();
+                this.createSparkSystem();
+            }
+
+            bindEvents() {
+                this.startBtn.addEventListener('click', () => this.startProcess());
+                this.nextBtn.addEventListener('click', () => this.nextStep());
+                this.resetBtn.addEventListener('click', () => this.resetProcess());
+                this.autoBtn.addEventListener('click', () => this.toggleAutoMode());
+                
+                // 点击步骤跳转
+                this.steps.forEach((step, index) => {
+                    step.addEventListener('click', () => {
+                        this.goToStep(index + 1);
+                    });
+                });
+            }
+
+            createSparkSystem() {
+                // 创建火花粒子系统
+                for (let i = 0; i < 20; i++) {
+                    const spark = document.createElement('div');
+                    spark.className = 'spark';
+                    spark.style.left = Math.random() * 100 + '%';
+                    spark.style.top = Math.random() * 100 + '%';
+                    this.sparks.appendChild(spark);
+                }
+            }
+
+            createSparks(x, y, count = 10) {
+                const sparkElements = this.sparks.querySelectorAll('.spark');
+                
+                for (let i = 0; i < Math.min(count, sparkElements.length); i++) {
+                    const spark = sparkElements[i];
+                    spark.style.left = x + 'px';
+                    spark.style.top = y + 'px';
+                    spark.style.setProperty('--dx', (Math.random() - 0.5) * 100 + 'px');
+                    spark.style.setProperty('--dy', (Math.random() - 0.5) * 100 + 'px');
+                    
+                    spark.classList.remove('flying');
+                    setTimeout(() => {
+                        spark.classList.add('flying');
+                    }, i * 50);
+                    
+                    setTimeout(() => {
+                        spark.classList.remove('flying');
+                    }, 1000 + i * 50);
+                }
+            }
+
+            startProcess() {
+                this.currentStep = 1;
+                this.updateDisplay();
+                this.updateVisualization();
+            }
+
+            nextStep() {
+                if (this.currentStep < this.totalSteps) {
+                    this.currentStep++;
+                    this.updateDisplay();
+                    this.updateVisualization();
+                }
+            }
+
+            resetProcess() {
+                this.currentStep = 0;
+                this.isAutoMode = false;
+                if (this.autoInterval) {
+                    clearInterval(this.autoInterval);
+                    this.autoInterval = null;
+                }
+                this.autoBtn.textContent = '⚡ 自动演示';
+                this.updateDisplay();
+                this.updateVisualization();
+            }
+
+            toggleAutoMode() {
+                this.isAutoMode = !this.isAutoMode;
+                
+                if (this.isAutoMode) {
+                    this.autoBtn.textContent = '⏸️ 暂停';
+                    this.startAutoMode();
+                } else {
+                    this.autoBtn.textContent = '⚡ 自动演示';
+                    if (this.autoInterval) {
+                        clearInterval(this.autoInterval);
+                        this.autoInterval = null;
+                    }
+                }
+            }
+
+            startAutoMode() {
+                if (this.currentStep === 0) {
+                    this.currentStep = 1;
+                }
+                
+                this.autoInterval = setInterval(() => {
+                    if (this.currentStep < this.totalSteps) {
+                        this.nextStep();
+                    } else {
+                        this.resetProcess();
+                        setTimeout(() => {
+                            this.currentStep = 1;
+                            this.updateDisplay();
+                            this.updateVisualization();
+                        }, 1000);
+                    }
+                }, 4000);
+            }
+
+            goToStep(step) {
+                this.currentStep = Math.max(0, Math.min(step, this.totalSteps));
+                this.updateDisplay();
+                this.updateVisualization();
+            }
+
+            updateDisplay() {
+                // 更新步骤显示
+                this.steps.forEach((step, index) => {
+                    if (index < this.currentStep) {
+                        step.classList.add('active');
+                    } else {
+                        step.classList.remove('active');
+                    }
+                });
+                
+                // 更新进度条
+                const progress = (this.currentStep / this.totalSteps) * 100;
+                this.progressFill.style.width = progress + '%';
+                
+                // 更新进度文字
+                const progressTexts = [
+                    '准备开始制作青铜鼎',
+                    '正在设计图案...',
+                    '正在制作陶范...',
+                    '正在熔化青铜...',
+                    '正在浇铸成型...',
+                    '正在打磨修整...',
+                    '正在雕刻装饰...',
+                    '青铜鼎制作完成！'
+                ];
+                this.progressText.textContent = progressTexts[this.currentStep];
+                
+                // 更新按钮状态
+                this.nextBtn.disabled = this.currentStep >= this.totalSteps;
+                this.nextBtn.style.opacity = this.currentStep >= this.totalSteps ? '0.5' : '1';
+            }
+
+            updateVisualization() {
+                // 重置所有元素
+                this.resetAllElements();
+                
+                switch (this.currentStep) {
+                    case 0:
+                        // 初始状态
+                        break;
+                        
+                    case 1:
+                        // 设计图案
+                        this.startDesignPhase();
+                        break;
+                        
+                    case 2:
+                        // 制作陶范
+                        this.startMoldMakingPhase();
+                        break;
+                        
+                    case 3:
+                        // 熔化青铜
+                        this.startMeltingPhase();
+                        break;
+                        
+                    case 4:
+                        // 浇铸成型
+                        this.startCastingPhase();
+                        break;
+                        
+                    case 5:
+                        // 打磨修整
+                        this.startFinishingPhase();
+                        break;
+                        
+                    case 6:
+                        // 雕刻装饰
+                        this.startEngravingPhase();
+                        break;
+                }
+            }
+
+            resetAllElements() {
+                this.vesselClay.style.opacity = '1';
+                this.vesselClay.style.transform = 'translate(-50%, -50%) scale(1)';
+                this.vesselClay.className = 'vessel-clay';
+                this.vesselBronze.style.opacity = '0';
+                this.vesselBronze.style.transform = 'translate(-50%, -50%) scale(0.8)';
+                this.vesselBronze.className = 'vessel-bronze';
+                this.moldPieces.style.opacity = '0';
+                this.moldPieces.className = 'mold-pieces';
+                this.furnace.style.opacity = '0';
+                this.furnace.className = 'furnace';
+                this.flames.className = 'flames';
+                this.liquidMetal.className = 'liquid-metal';
+                this.craftsman.className = 'craftsman';
+                this.tools.className = 'tools';
+                this.tool1.className = 'tool';
+                this.tool2.className = 'tool';
+                this.tool3.className = 'tool';
+            }
+
+            startDesignPhase() {
+                this.craftsman.classList.add('working');
+                this.tools.classList.add('active');
+                this.tool1.classList.add('in-use');
+                this.vesselClay.classList.add('carving');
+                
+                // 创建设计火花
+                setTimeout(() => {
+                    this.createSparks(200, 200, 5);
+                }, 500);
+            }
+
+            startMoldMakingPhase() {
+                this.craftsman.classList.add('working');
+                this.tools.classList.add('active');
+                this.tool2.classList.add('in-use');
+                this.vesselClay.style.opacity = '0.3';
+                this.moldPieces.style.opacity = '1';
+                this.moldPieces.classList.add('assembling');
+                
+                // 创建组装火花
+                setTimeout(() => {
+                    this.createSparks(250, 150, 8);
+                }, 400);
+            }
+
+            startMeltingPhase() {
+                this.furnace.style.opacity = '1';
+                this.furnace.classList.add('active');
+                this.flames.classList.add('active');
+                this.craftsman.classList.add('working');
+                
+                // 创建熔化火花
+                const meltInterval = setInterval(() => {
+                    this.createSparks(320, 280, 3);
+                }, 800);
+                
+                setTimeout(() => {
+                    clearInterval(meltInterval);
+                }, 3000);
+            }
+
+            startCastingPhase() {
+                this.moldPieces.style.opacity = '0.7';
+                this.liquidMetal.style.opacity = '1';
+                this.liquidMetal.classList.add('pouring');
+                this.craftsman.classList.add('working');
+                
+                // 创建浇铸火花
+                setTimeout(() => {
+                    this.createSparks(200, 100, 15);
+                }, 1000);
+                
+                setTimeout(() => {
+                    this.vesselBronze.style.opacity = '0.7';
+                    this.moldPieces.style.opacity = '0';
+                    this.liquidMetal.style.opacity = '0';
+                }, 2000);
+            }
+
+            startFinishingPhase() {
+                this.vesselBronze.style.opacity = '1';
+                this.vesselBronze.style.transform = 'translate(-50%, -50%) scale(1.1)';
+                this.vesselBronze.classList.add('shining');
+                this.craftsman.classList.add('working');
+                this.tools.classList.add('active');
+                this.tool3.classList.add('in-use');
+                
+                // 创建打磨火花
+                const finishInterval = setInterval(() => {
+                    this.createSparks(200, 200, 2);
+                }, 600);
+                
+                setTimeout(() => {
+                    clearInterval(finishInterval);
+                }, 2500);
+            }
+
+            startEngravingPhase() {
+                this.vesselBronze.style.opacity = '1';
+                this.vesselBronze.style.transform = 'translate(-50%, -50%) scale(1.2)';
+                this.vesselBronze.classList.add('shining', 'engraved');
+                this.craftsman.classList.add('working');
+                this.tools.classList.add('active');
+                this.tool1.classList.add('in-use');
+                
+                // 创建雕刻火花
+                const engraveInterval = setInterval(() => {
+                    this.createSparks(200, 180, 4);
+                }, 500);
+                
+                setTimeout(() => {
+                    clearInterval(engraveInterval);
+                    // 最终庆祝火花
+                    this.createSparks(200, 200, 20);
+                }, 2000);
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            new EnhancedBronzeVesselMaking();
+        });
+    </script>
+</body>
+</html>

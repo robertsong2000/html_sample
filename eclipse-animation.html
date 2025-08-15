@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>日蚀动画 - Apple Style</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+
+        .eclipse-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .sun {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #ffeb3b, #ff9800);
+            box-shadow: 
+                0 0 60px #ff9800,
+                0 0 100px #ff5722,
+                0 0 150px #ff5722,
+                inset 0 0 20px #ff5722;
+            animation: sunGlow 3s ease-in-out infinite;
+        }
+
+        .moon {
+            position: absolute;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, #2c2c2c, #000000);
+            box-shadow: 
+                0 0 30px rgba(0, 0, 0, 0.8),
+                inset 0 0 20px rgba(255, 255, 255, 0.1);
+            animation: moonOrbit 8s linear infinite;
+            z-index: 10;
+        }
+
+        .corona {
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            border-radius: 50%;
+            background: radial-gradient(circle, transparent 35%, rgba(255, 255, 255, 0.1) 40%, transparent 45%);
+            opacity: 0;
+            animation: coronaGlow 8s linear infinite;
+            z-index: 5;
+        }
+
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 2s ease-in-out infinite;
+        }
+
+        .control-panel {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 100;
+        }
+
+        .control-btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(255, 255, 255, 0.1);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            z-index: 100;
+        }
+
+        .eclipse-title {
+            font-size: 28px;
+            font-weight: 300;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+            text-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
+        }
+
+        .eclipse-phase {
+            font-size: 16px;
+            opacity: 0.8;
+            font-weight: 300;
+        }
+
+        @keyframes sunGlow {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        @keyframes moonOrbit {
+            0% { 
+                transform: translateX(150px) scale(1);
+            }
+            50% { 
+                transform: translateX(0) scale(1);
+            }
+            100% { 
+                transform: translateX(-150px) scale(1);
+            }
+        }
+
+        @keyframes coronaGlow {
+            0%, 30% { opacity: 0; }
+            45%, 55% { opacity: 1; }
+            70%, 100% { opacity: 0; }
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .paused .moon {
+            animation-play-state: paused;
+        }
+
+        .paused .corona {
+            animation-play-state: paused;
+        }
+
+        @media (max-width: 768px) {
+            .eclipse-container {
+                width: 300px;
+                height: 300px;
+            }
+
+            .sun {
+                width: 150px;
+                height: 150px;
+            }
+
+            .moon {
+                width: 135px;
+                height: 135px;
+            }
+
+            .corona {
+                width: 180px;
+                height: 180px;
+            }
+
+            .eclipse-title {
+                font-size: 24px;
+            }
+
+            .control-panel {
+                bottom: 30px;
+                gap: 15px;
+            }
+
+            .control-btn {
+                padding: 10px 20px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="stars" id="stars"></div>
+    
+    <div class="info-panel">
+        <h1 class="eclipse-title">日蚀</h1>
+        <p class="eclipse-phase" id="eclipsePhase">初亏</p>
+    </div>
+
+    <div class="eclipse-container" id="eclipseContainer">
+        <div class="sun"></div>
+        <div class="corona"></div>
+        <div class="moon" id="moon"></div>
+    </div>
+
+    <div class="control-panel">
+        <button class="control-btn" id="playPauseBtn">暂停</button>
+        <button class="control-btn" id="resetBtn">重置</button>
+        <button class="control-btn" id="speedBtn">速度: 1x</button>
+    </div>
+
+    <script>
+        class EclipseAnimation {
+            constructor() {
+                this.moon = document.getElementById('moon');
+                this.container = document.getElementById('eclipseContainer');
+                this.phaseText = document.getElementById('eclipsePhase');
+                this.playPauseBtn = document.getElementById('playPauseBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.speedBtn = document.getElementById('speedBtn');
+                
+                this.isPlaying = true;
+                this.currentSpeed = 1;
+                this.speeds = [0.5, 1, 2, 4];
+                this.speedIndex = 1;
+                
+                this.init();
+            }
+
+            init() {
+                this.createStars();
+                this.bindEvents();
+                this.startPhaseTracking();
+            }
+
+            createStars() {
+                const starsContainer = document.getElementById('stars');
+                const starCount = 100;
+
+                for (let i = 0; i < starCount; i++) {
+                    const star = document.createElement('div');
+                    star.className = 'star';
+                    star.style.left = Math.random() * 100 + '%';
+                    star.style.top = Math.random() * 100 + '%';
+                    star.style.animationDelay = Math.random() * 2 + 's';
+                    star.style.animationDuration = (Math.random() * 2 + 1) + 's';
+                    starsContainer.appendChild(star);
+                }
+            }
+
+            bindEvents() {
+                this.playPauseBtn.addEventListener('click', () => {
+                    this.togglePlayPause();
+                });
+
+                this.resetBtn.addEventListener('click', () => {
+                    this.reset();
+                });
+
+                this.speedBtn.addEventListener('click', () => {
+                    this.changeSpeed();
+                });
+            }
+
+            togglePlayPause() {
+                this.isPlaying = !this.isPlaying;
+                
+                if (this.isPlaying) {
+                    this.container.classList.remove('paused');
+                    this.playPauseBtn.textContent = '暂停';
+                } else {
+                    this.container.classList.add('paused');
+                    this.playPauseBtn.textContent = '播放';
+                }
+            }
+
+            reset() {
+                this.moon.style.animation = 'none';
+                this.moon.offsetHeight; // 触发重排
+                this.moon.style.animation = `moonOrbit ${8 / this.currentSpeed}s linear infinite`;
+                
+                const corona = document.querySelector('.corona');
+                corona.style.animation = 'none';
+                corona.offsetHeight;
+                corona.style.animation = `coronaGlow ${8 / this.currentSpeed}s linear infinite`;
+                
+                this.isPlaying = true;
+                this.container.classList.remove('paused');
+                this.playPauseBtn.textContent = '暂停';
+            }
+
+            changeSpeed() {
+                this.speedIndex = (this.speedIndex + 1) % this.speeds.length;
+                this.currentSpeed = this.speeds[this.speedIndex];
+                this.speedBtn.textContent = `速度: ${this.currentSpeed}x`;
+                
+                this.moon.style.animationDuration = `${8 / this.currentSpeed}s`;
+                const corona = document.querySelector('.corona');
+                corona.style.animationDuration = `${8 / this.currentSpeed}s`;
+            }
+
+            startPhaseTracking() {
+                setInterval(() => {
+                    if (!this.isPlaying) return;
+                    
+                    const moonRect = this.moon.getBoundingClientRect();
+                    const containerRect = this.container.getBoundingClientRect();
+                    
+                    const moonCenterX = moonRect.left + moonRect.width / 2;
+                    const containerCenterX = containerRect.left + containerRect.width / 2;
+                    
+                    const distance = Math.abs(moonCenterX - containerCenterX);
+                    const maxDistance = 150;
+                    const overlap = maxDistance - distance;
+                    
+                    let phase = '';
+                    if (distance > 120) {
+                        phase = '初亏';
+                    } else if (distance > 60) {
+                        phase = '食既';
+                    } else if (distance > 20) {
+                        phase = '食甚';
+                    } else {
+                        phase = '生光';
+                    }
+                    
+                    this.phaseText.textContent = phase;
+                }, 100);
+            }
+        }
+
+        // 页面加载完成后初始化动画
+        document.addEventListener('DOMContentLoaded', () => {
+            new EclipseAnimation();
+        });
+    </script>
+</body>
+</html>

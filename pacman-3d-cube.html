@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Pac-Man Cube Loading</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .container {
+            perspective: 1000px;
+            position: relative;
+        }
+
+        .cube {
+            width: 300px;
+            height: 300px;
+            position: relative;
+            transform-style: preserve-3d;
+            animation: rotateCube 20s linear infinite;
+        }
+
+        .face {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            background: rgba(0, 0, 0, 0.8);
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            gap: 1px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .front { transform: rotateY(0deg) translateZ(150px); }
+        .back { transform: rotateY(180deg) translateZ(150px); }
+        .right { transform: rotateY(90deg) translateZ(150px); }
+        .left { transform: rotateY(-90deg) translateZ(150px); }
+        .top { transform: rotateX(90deg) translateZ(150px); }
+        .bottom { transform: rotateX(-90deg) translateZ(150px); }
+
+        .cell {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background: #ffff00;
+            border-radius: 50%;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .pacman {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            background: #ffff00;
+            border-radius: 50%;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .pacman::before {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 12px solid rgba(0, 0, 0, 0.8);
+            border-top: 12px solid transparent;
+            border-bottom: 12px solid transparent;
+            border-radius: 12px;
+            top: 0;
+            right: 0;
+            animation: chomp 0.3s linear infinite;
+        }
+
+        .pacman.up::before {
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: 12px solid rgba(0, 0, 0, 0.8);
+            border-bottom: none;
+            top: -12px;
+            right: 0;
+        }
+
+        .pacman.down::before {
+            border-left: 12px solid transparent;
+            border-right: 12px solid transparent;
+            border-top: none;
+            border-bottom: 12px solid rgba(0, 0, 0, 0.8);
+            top: 24px;
+            right: 0;
+        }
+
+        .pacman.left::before {
+            border-left: none;
+            border-right: 12px solid rgba(0, 0, 0, 0.8);
+            border-top: 12px solid transparent;
+            border-bottom: 12px solid transparent;
+            top: 0;
+            right: 24px;
+        }
+
+        .eaten {
+            background: rgba(255, 255, 255, 0.05) !important;
+        }
+
+        .eaten .dot {
+            display: none;
+        }
+
+        @keyframes rotateCube {
+            0% { transform: rotateX(0deg) rotateY(0deg); }
+            25% { transform: rotateX(0deg) rotateY(90deg); }
+            50% { transform: rotateX(0deg) rotateY(180deg); }
+            75% { transform: rotateX(0deg) rotateY(270deg); }
+            100% { transform: rotateX(0deg) rotateY(360deg); }
+        }
+
+        @keyframes chomp {
+            0%, 100% { transform: rotate(0deg); }
+            50% { transform: rotate(45deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .ui-overlay {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            z-index: 1000;
+        }
+
+        .loading-text {
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .progress-container {
+            width: 300px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #ffff00, #ffa500);
+            border-radius: 5px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            font-size: 16px;
+            opacity: 0.8;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            text-align: center;
+        }
+
+        .control-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+
+        .complete-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            text-align: center;
+            z-index: 2000;
+        }
+
+        .complete-screen.show {
+            display: flex;
+        }
+
+        .complete-content h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffff00;
+        }
+
+        .restart-btn {
+            background: #ffff00;
+            color: #333;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 18px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .face-label {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="ui-overlay">
+            <div class="loading-text">3D 吃豆人加载中...</div>
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-text" id="progressText">0%</div>
+        </div>
+
+        <div class="cube" id="cube">
+            <div class="face front" data-face="front">
+                <div class="face-label">前面</div>
+            </div>
+            <div class="face back" data-face="back">
+                <div class="face-label">后面</div>
+            </div>
+            <div class="face right" data-face="right">
+                <div class="face-label">右面</div>
+            </div>
+            <div class="face left" data-face="left">
+                <div class="face-label">左面</div>
+            </div>
+            <div class="face top" data-face="top">
+                <div class="face-label">上面</div>
+            </div>
+            <div class="face bottom" data-face="bottom">
+                <div class="face-label">下面</div>
+            </div>
+        </div>
+
+        <div class="pacman" id="pacman"></div>
+
+        <div class="controls">
+            <div>使用方向键控制吃豆人移动</div>
+            <div class="control-buttons">
+                <div></div>
+                <button class="control-btn" onclick="movePacman('up')">↑</button>
+                <div></div>
+                <button class="control-btn" onclick="movePacman('left')">←</button>
+                <button class="control-btn" onclick="movePacman('down')">↓</button>
+                <button class="control-btn" onclick="movePacman('right')">→</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="complete-screen" id="completeScreen">
+        <div class="complete-content">
+            <h1>🎉 加载完成！</h1>
+            <p>吃豆人已经吃完了所有豆子！</p>
+            <button class="restart-btn" onclick="restartGame()">重新开始</button>
+        </div>
+    </div>
+
+    <script>
+        class PacManGame {
+            constructor() {
+                this.cube = document.getElementById('cube');
+                this.pacman = document.getElementById('pacman');
+                this.progressBar = document.getElementById('progressBar');
+                this.progressText = document.getElementById('progressText');
+                this.completeScreen = document.getElementById('completeScreen');
+                
+                this.currentFace = 'front';
+                this.currentX = 0;
+                this.currentY = 0;
+                this.totalDots = 600; // 6 faces × 100 cells
+                this.eatenDots = 0;
+                this.isGameComplete = false;
+                
+                this.faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
+                this.faceGrids = {};
+                
+                this.init();
+            }
+
+            init() {
+                this.createGrids();
+                this.positionPacman();
+                this.setupKeyboardControls();
+                this.startAutoRotation();
+            }
+
+            createGrids() {
+                this.faces.forEach(face => {
+                    const faceElement = document.querySelector(`.${face}`);
+                    const grid = [];
+                    
+                    for (let i = 0; i < 100; i++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.dataset.face = face;
+                        cell.dataset.index = i;
+                        
+                        const dot = document.createElement('div');
+                        dot.className = 'dot';
+                        cell.appendChild(dot);
+                        
+                        faceElement.appendChild(cell);
+                        grid.push(cell);
+                    }
+                    
+                    this.faceGrids[face] = grid;
+                });
+            }
+
+            positionPacman() {
+                const faceElement = document.querySelector(`.${this.currentFace}`);
+                const rect = faceElement.getBoundingClientRect();
+                const cellSize = rect.width / 10;
+                
+                const x = rect.left + (this.currentX * cellSize) + (cellSize / 2) - 12;
+                const y = rect.top + (this.currentY * cellSize) + (cellSize / 2) - 12;
+                
+                this.pacman.style.left = x + 'px';
+                this.pacman.style.top = y + 'px';
+                
+                this.updatePacmanDirection();
+            }
+
+            updatePacmanDirection() {
+                this.pacman.className = 'pacman';
+            }
+
+            movePacman(direction) {
+                if (this.isGameComplete) return;
+                
+                let newX = this.currentX;
+                let newY = this.currentY;
+                let newFace = this.currentFace;
+                
+                switch (direction) {
+                    case 'up':
+                        newY--;
+                        if (newY < 0) {
+                            newY = 9;
+                            newFace = this.getAdjacentFace('top');
+                        }
+                        break;
+                    case 'down':
+                        newY++;
+                        if (newY > 9) {
+                            newY = 0;
+                            newFace = this.getAdjacentFace('bottom');
+                        }
+                        break;
+                    case 'left':
+                        newX--;
+                        if (newX < 0) {
+                            newX = 9;
+                            newFace = this.getAdjacentFace('left');
+                        }
+                        break;
+                    case 'right':
+                        newX++;
+                        if (newX > 9) {
+                            newX = 0;
+                            newFace = this.getAdjacentFace('right');
+                        }
+                        break;
+                }
+                
+                this.currentX = newX;
+                this.currentY = newY;
+                this.currentFace = newFace;
+                
+                this.pacman.className = `pacman ${direction}`;
+                this.positionPacman();
+                this.eatDot();
+            }
+
+            getAdjacentFace(direction) {
+                const faceMap = {
+                    front: { top: 'top', bottom: 'bottom', left: 'left', right: 'right' },
+                    back: { top: 'top', bottom: 'bottom', left: 'right', right: 'left' },
+                    left: { top: 'top', bottom: 'bottom', left: 'back', right: 'front' },
+                    right: { top: 'top', bottom: 'bottom', left: 'front', right: 'back' },
+                    top: { top: 'back', bottom: 'front', left: 'left', right: 'right' },
+                    bottom: { top: 'front', bottom: 'back', left: 'left', right: 'right' }
+                };
+                
+                return faceMap[this.currentFace][direction];
+            }
+
+            eatDot() {
+                const cellIndex = this.currentY * 10 + this.currentX;
+                const cell = this.faceGrids[this.currentFace][cellIndex];
+                
+                if (!cell.classList.contains('eaten')) {
+                    cell.classList.add('eaten');
+                    this.eatenDots++;
+                    this.updateProgress();
+                    
+                    if (this.eatenDots >= this.totalDots) {
+                        this.completeGame();
+                    }
+                }
+            }
+
+            updateProgress() {
+                const progress = (this.eatenDots / this.totalDots) * 100;
+                this.progressBar.style.width = progress + '%';
+                this.progressText.textContent = Math.round(progress) + '%';
+            }
+
+            completeGame() {
+                this.isGameComplete = true;
+                setTimeout(() => {
+                    this.completeScreen.classList.add('show');
+                }, 500);
+            }
+
+            setupKeyboardControls() {
+                document.addEventListener('keydown', (e) => {
+                    switch (e.key) {
+                        case 'ArrowUp':
+                            e.preventDefault();
+                            this.movePacman('up');
+                            break;
+                        case 'ArrowDown':
+                            e.preventDefault();
+                            this.movePacman('down');
+                            break;
+                        case 'ArrowLeft':
+                            e.preventDefault();
+                            this.movePacman('left');
+                            break;
+                        case 'ArrowRight':
+                            e.preventDefault();
+                            this.movePacman('right');
+                            break;
+                    }
+                });
+            }
+
+            startAutoRotation() {
+                // 立方体自动旋转
+                this.cube.style.animation = 'rotateCube 20s linear infinite';
+            }
+
+            restart() {
+                this.currentFace = 'front';
+                this.currentX = 0;
+                this.currentY = 0;
+                this.eatenDots = 0;
+                this.isGameComplete = false;
+                
+                // 重置所有格子
+                Object.values(this.faceGrids).forEach(grid => {
+                    grid.forEach(cell => {
+                        cell.classList.remove('eaten');
+                    });
+                });
+                
+                this.updateProgress();
+                this.positionPacman();
+                this.completeScreen.classList.remove('show');
+            }
+        }
+
+        // 初始化游戏
+        const game = new PacManGame();
+
+        // 全局函数
+        function movePacman(direction) {
+            game.movePacman(direction);
+        }
+
+        function restartGame() {
+            game.restart();
+        }
+
+        // 窗口大小改变时重新定位吃豆人
+        window.addEventListener('resize', () => {
+            game.positionPacman();
+        });
+    </script>
+</body>
+</html>

@@ -586,6 +586,9 @@ log "开始生成新页面..."
 
 cd "$WORKSPACE"
 
+# 确保在 main 分支
+git checkout main 2>/dev/null || log "已在 main 分支或切换失败"
+
 # 选择主题（避免重复）
 THEME=$(select_theme)
 THEME_ID=${THEME_POOL[$THEME]}
@@ -610,7 +613,10 @@ git commit -m "feat: 自动生成页面 - $THEME ($TIMESTAMP)" || {
     exit 0
 }
 
-git push origin master
+# 确保在 main 分支
+git checkout main 2>/dev/null || true
+
+git push origin main
 
 log "页面已提交并推送到 GitHub"
 echo "✅ 完成: $FILENAME (主题: $THEME)"

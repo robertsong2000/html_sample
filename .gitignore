@@ -1,0 +1,16 @@
+# OpenClaw 工作区配置文件
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md
+.clawhub/
+.openclaw/
+memory/
+skills/
+scripts/
+
+# 系统文件
+.DS_Store
+*.log

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pac-Man Loading Animation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+
+        .loading-container {
+            text-align: center;
+            color: white;
+        }
+
+        .pacman-container {
+            position: relative;
+            width: 200px;
+            height: 60px;
+            margin: 20px auto;
+        }
+
+        .pacman {
+            width: 50px;
+            height: 50px;
+            background: #ffff00;
+            border-radius: 50%;
+            position: absolute;
+            top: 5px;
+            left: 0;
+            animation: moveRight 2s linear infinite;
+        }
+
+        .pacman::before {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 0;
+            border-left: 25px solid #667eea;
+            border-top: 25px solid transparent;
+            border-bottom: 25px solid transparent;
+            border-radius: 25px;
+            top: 0;
+            right: 0;
+            animation: chomp 0.3s linear infinite;
+        }
+
+        .dots {
+            position: absolute;
+            top: 25px;
+            left: 70px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            animation: fadeOut 2s linear infinite;
+        }
+
+        .dot:nth-child(1) {
+            left: 0;
+            animation-delay: 0s;
+        }
+
+        .dot:nth-child(2) {
+            left: 20px;
+            animation-delay: 0.2s;
+        }
+
+        .dot:nth-child(3) {
+            left: 40px;
+            animation-delay: 0.4s;
+        }
+
+        .dot:nth-child(4) {
+            left: 60px;
+            animation-delay: 0.6s;
+        }
+
+        .dot:nth-child(5) {
+            left: 80px;
+            animation-delay: 0.8s;
+        }
+
+        .loading-text {
+            font-size: 24px;
+            margin-top: 30px;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .progress-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+            margin: 20px auto;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #ffff00;
+            border-radius: 2px;
+            width: 0%;
+            animation: loading 3s ease-in-out infinite;
+        }
+
+        @keyframes moveRight {
+            0% {
+                left: 0;
+            }
+            100% {
+                left: 150px;
+            }
+        }
+
+        @keyframes chomp {
+            0%, 100% {
+                transform: rotate(0deg);
+            }
+            50% {
+                transform: rotate(45deg);
+            }
+        }
+
+        @keyframes fadeOut {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0.5);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.6;
+            }
+            50% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes loading {
+            0% {
+                width: 0%;
+            }
+            50% {
+                width: 70%;
+            }
+            100% {
+                width: 100%;
+            }
+        }
+
+        .complete {
+            display: none;
+            text-align: center;
+            color: white;
+        }
+
+        .complete.show {
+            display: block;
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .restart-btn {
+            background: #ffff00;
+            color: #333;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: transform 0.2s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-container" id="loadingContainer">
+        <div class="pacman-container">
+            <div class="pacman"></div>
+            <div class="dots">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+        <div class="loading-text">正在加载中...</div>
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+    </div>
+
+    <div class="complete" id="completeContainer">
+        <h1>加载完成！</h1>
+        <p>吃豆人已经吃完了所有的豆子</p>
+        <button class="restart-btn" onclick="restartLoading()">重新加载</button>
+    </div>
+
+    <script>
+        let loadingTimer;
+        let progress = 0;
+
+        function startLoading() {
+            const loadingContainer = document.getElementById('loadingContainer');
+            const completeContainer = document.getElementById('completeContainer');
+            const progressFill = document.querySelector('.progress-fill');
+            
+            loadingContainer.style.display = 'block';
+            completeContainer.classList.remove('show');
+            progress = 0;
+            
+            loadingTimer = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress >= 100) {
+                    progress = 100;
+                    completeLoading();
+                }
+                progressFill.style.width = progress + '%';
+            }, 200);
+        }
+
+        function completeLoading() {
+            clearInterval(loadingTimer);
+            
+            setTimeout(() => {
+                document.getElementById('loadingContainer').style.display = 'none';
+                document.getElementById('completeContainer').classList.add('show');
+            }, 500);
+        }
+
+        function restartLoading() {
+            startLoading();
+        }
+
+        // 页面加载完成后自动开始演示
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                startLoading();
+            }, 1000);
+        });
+
+        // 模拟真实加载场景
+        function simulatePageLoad() {
+            startLoading();
+            
+            // 模拟3-6秒的加载时间
+            const loadTime = 3000 + Math.random() * 3000;
+            setTimeout(() => {
+                completeLoading();
+            }, loadTime);
+        }
+
+        // 如果你想测试真实的加载效果，可以调用这个函数
+        // simulatePageLoad();
+    </script>
+</body>
+</html>

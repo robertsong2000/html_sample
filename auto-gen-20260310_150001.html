@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>星空效果</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        body { background: radial-gradient(ellipse at bottom, #1b2735 0%, #090a0f 100%); overflow: hidden; height: 100vh; }
+        .star { position: fixed; background: #fff; border-radius: 50%; animation: twinkle ease-in-out infinite; }
+        @keyframes twinkle { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+        .title { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 2em; text-shadow: 0 0 20px #fff; }
+    </style>
+</head>
+<body>
+    <div class="title">✨ 星空效果 ✨</div>
+    <script>
+        for (let i = 0; i < 200; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * 100 + 'vw';
+            star.style.top = Math.random() * 100 + 'vh';
+            star.style.width = star.style.height = Math.random() * 3 + 'px';
+            star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+            document.body.appendChild(star);
+        }
+    </script>
+</body>
+</html>

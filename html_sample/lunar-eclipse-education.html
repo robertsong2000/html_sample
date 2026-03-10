@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>月食科普 - 小朋友学习天地</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 100%);
+            min-height: 100vh;
+            font-family: 'Microsoft YaHei', 'Arial', sans-serif;
+            overflow-x: hidden;
+            color: white;
+        }
+
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 3s ease-in-out infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .main-title {
+            font-size: 48px;
+            font-weight: bold;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            text-shadow: 0 0 30px rgba(255, 255, 255, 0.3);
+        }
+
+        .subtitle {
+            font-size: 20px;
+            color: #a0a0a0;
+            font-weight: 300;
+        }
+
+        .main-container {
+            display: flex;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            gap: 40px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .animation-section {
+            flex: 1;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .solar-system {
+            position: relative;
+            width: 500px;
+            height: 500px;
+            margin-bottom: 30px;
+        }
+
+        .sun {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background: radial-gradient(circle, #ffeb3b, #ff9800);
+            border-radius: 50%;
+            left: 50px;
+            top: 50%;
+            transform: translateY(-50%);
+            box-shadow: 
+                0 0 50px #ff9800,
+                0 0 100px #ff5722,
+                inset 0 0 20px #ff5722;
+            animation: sunGlow 2s ease-in-out infinite;
+        }
+
+        .earth {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle at 30% 30%, #4fc3f7, #1976d2);
+            border-radius: 50%;
+            right: 100px;
+            top: 50%;
+            transform: translateY(-50%);
+            box-shadow: 
+                0 0 30px #4fc3f7,
+                inset 0 0 15px #0d47a1;
+            animation: earthRotate 10s linear infinite;
+        }
+
+        .moon-orbit {
+            position: absolute;
+            width: 200px;
+            height: 200px;
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            animation: moonOrbit 8s linear infinite;
+        }
+
+        .moon {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: radial-gradient(circle at 40% 40%, #f5f5f5, #9e9e9e);
+            border-radius: 50%;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        .earth-shadow {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(0, 0, 0, 0.8), transparent);
+            border-radius: 50%;
+            right: 90px;
+            top: 50%;
+            transform: translateY(-50%);
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .eclipse-moon {
+            background: radial-gradient(circle at 40% 40%, #8b4513, #3e2723) !important;
+            box-shadow: 0 0 20px rgba(139, 69, 19, 0.8) !important;
+        }
+
+        @keyframes sunGlow {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.1); }
+        }
+
+        @keyframes earthRotate {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        @keyframes moonOrbit {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .control-btn {
+            padding: 12px 24px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .control-btn:active {
+            transform: translateY(0);
+        }
+
+        .education-section {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .section-title {
+            font-size: 28px;
+            color: #4ecdc4;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .emoji {
+            font-size: 32px;
+        }
+
+        .info-card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #4ecdc4;
+            transition: all 0.3s ease;
+        }
+
+        .info-card:hover {
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateX(5px);
+        }
+
+        .info-card h3 {
+            color: #ff6b6b;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .info-card p {
+            color: #e0e0e0;
+            line-height: 1.6;
+            font-size: 16px;
+        }
+
+        .phase-indicator {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .phase-name {
+            font-size: 24px;
+            color: #45b7d1;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .phase-description {
+            color: #b0b0b0;
+            font-size: 14px;
+        }
+
+        .fun-fact {
+            background: linear-gradient(45deg, #ff9a9e, #fecfef);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            color: #333;
+        }
+
+        .fun-fact h4 {
+            color: #d63384;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .fun-fact p {
+            color: #555;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .solar-system {
+                width: 400px;
+                height: 400px;
+            }
+
+            .sun {
+                width: 100px;
+                height: 100px;
+                left: 30px;
+            }
+
+            .earth {
+                width: 60px;
+                height: 60px;
+                right: 80px;
+            }
+
+            .moon-orbit {
+                width: 160px;
+                height: 160px;
+                right: 30px;
+            }
+
+            .moon {
+                width: 25px;
+                height: 25px;
+                top: -12.5px;
+            }
+
+            .earth-shadow {
+                width: 80px;
+                height: 80px;
+                right: 70px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-title {
+                font-size: 36px;
+            }
+
+            .subtitle {
+                font-size: 16px;
+            }
+
+            .solar-system {
+                width: 300px;
+                height: 300px;
+            }
+
+            .sun {
+                width: 80px;
+                height: 80px;
+                left: 20px;
+            }
+
+            .earth {
+                width: 50px;
+                height: 50px;
+                right: 60px;
+            }
+
+            .moon-orbit {
+                width: 120px;
+                height: 120px;
+                right: 25px;
+            }
+
+            .moon {
+                width: 20px;
+                height: 20px;
+                top: -10px;
+            }
+
+            .earth-shadow {
+                width: 70px;
+                height: 70px;
+                right: 50px;
+            }
+
+            .controls {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .control-btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="stars" id="stars"></div>
+
+    <div class="header">
+        <h1 class="main-title">🌙 月食科普小课堂</h1>
+        <p class="subtitle">一起探索月食的奇妙世界吧！</p>
+    </div>
+
+    <div class="main-container">
+        <div class="animation-section">
+            <div class="solar-system" id="solarSystem">
+                <div class="sun"></div>
+                <div class="earth"></div>
+                <div class="earth-shadow" id="earthShadow"></div>
+                <div class="moon-orbit" id="moonOrbit">
+                    <div class="moon" id="moon"></div>
+                </div>
+            </div>
+
+            <div class="phase-indicator">
+                <div class="phase-name" id="phaseName">正常月相</div>
+                <div class="phase-description" id="phaseDescription">月亮正在围绕地球运转</div>
+            </div>
+
+            <div class="controls">
+                <button class="control-btn" id="playBtn">▶️ 播放</button>
+                <button class="control-btn" id="pauseBtn">⏸️ 暂停</button>
+                <button class="control-btn" id="resetBtn">🔄 重置</button>
+                <button class="control-btn" id="eclipseBtn">🌑 月食模式</button>
+            </div>
+        </div>
+
+        <div class="education-section">
+            <h2 class="section-title">
+                <span class="emoji">📚</span>
+                月食小知识
+            </h2>
+
+            <div class="info-card">
+                <h3>🌍 什么是月食？</h3>
+                <p>月食是当地球运行到太阳和月亮之间时，地球的影子投射到月亮上，使得月亮变暗的天文现象。这通常发生在满月的时候。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>🌙 月食的类型</h3>
+                <p><strong>月全食：</strong>整个月亮都进入地球的本影，月亮会变成美丽的红铜色。<br>
+                <strong>月偏食：</strong>只有一部分月亮进入地球的本影。<br>
+                <strong>半影月食：</strong>月亮只进入地球的半影，变化不太明显。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>⏰ 月食发生频率</h3>
+                <p>每年至少会发生2次月食，最多5次。月全食大约每2-3年发生一次，每次持续约3-4小时。</p>
+            </div>
+
+            <div class="info-card">
+                <h3>🔴 为什么月亮会变红？</h3>
+                <p>月全食时，月亮变成红色是因为太阳光穿过地球大气层时，蓝光被散射，红光被折射到月球表面，这就是"血月"的由来。</p>
+            </div>
+
+            <div class="fun-fact">
+                <h4>💡 有趣的小知识</h4>
+                <p>古代人们看到月食时常常感到害怕，认为有"天狗"吃月亮。现在我们知道这是美丽的自然现象，可以用肉眼直接观察，非常安全！</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class LunarEclipseEducation {
+            constructor() {
+                this.moon = document.getElementById('moon');
+                this.moonOrbit = document.getElementById('moonOrbit');
+                this.earthShadow = document.getElementById('earthShadow');
+                this.phaseName = document.getElementById('phaseName');
+                this.phaseDescription = document.getElementById('phaseDescription');
+                
+                this.playBtn = document.getElementById('playBtn');
+                this.pauseBtn = document.getElementById('pauseBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.eclipseBtn = document.getElementById('eclipseBtn');
+                
+                this.isPlaying = true;
+                this.isEclipseMode = false;
+                this.animationSpeed = 1;
+                
+                this.phases = [
+                    { name: '正常月相', description: '月亮正在围绕地球运转' },
+                    { name: '初亏', description: '月亮开始进入地球的影子' },
+                    { name: '食既', description: '月亮完全进入地球的本影' },
+                    { name: '食甚', description: '月食达到最深程度' },
+                    { name: '生光', description: '月亮开始离开地球的影子' },
+                    { name: '复圆', description: '月亮完全离开地球的影子' }
+                ];
+                
+                this.init();
+            }
+
+            init() {
+                this.createStars();
+                this.bindEvents();
+                this.startPhaseTracking();
+            }
+
+            createStars() {
+                const starsContainer = document.getElementById('stars');
+                const starCount = 150;
+
+                for (let i = 0; i < starCount; i++) {
+                    const star = document.createElement('div');
+                    star.className = 'star';
+                    star.style.left = Math.random() * 100 + '%';
+                    star.style.top = Math.random() * 100 + '%';
+                    star.style.animationDelay = Math.random() * 3 + 's';
+                    star.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                    starsContainer.appendChild(star);
+                }
+            }
+
+            bindEvents() {
+                this.playBtn.addEventListener('click', () => {
+                    this.play();
+                });
+
+                this.pauseBtn.addEventListener('click', () => {
+                    this.pause();
+                });
+
+                this.resetBtn.addEventListener('click', () => {
+                    this.reset();
+                });
+
+                this.eclipseBtn.addEventListener('click', () => {
+                    this.toggleEclipseMode();
+                });
+            }
+
+            play() {
+                this.isPlaying = true;
+                this.moonOrbit.style.animationPlayState = 'running';
+                this.updatePhaseTracking();
+            }
+
+            pause() {
+                this.isPlaying = false;
+                this.moonOrbit.style.animationPlayState = 'paused';
+            }
+
+            reset() {
+                this.moonOrbit.style.animation = 'none';
+                this.moonOrbit.offsetHeight;
+                this.moonOrbit.style.animation = `moonOrbit ${8 / this.animationSpeed}s linear infinite`;
+                
+                if (this.isEclipseMode) {
+                    this.earthShadow.style.opacity = '0';
+                    this.moon.classList.remove('eclipse-moon');
+                }
+                
+                this.isPlaying = true;
+                this.updatePhaseDisplay(0);
+            }
+
+            toggleEclipseMode() {
+                this.isEclipseMode = !this.isEclipseMode;
+                
+                if (this.isEclipseMode) {
+                    this.eclipseBtn.textContent = '🌕 正常模式';
+                    this.startEclipseAnimation();
+                } else {
+                    this.eclipseBtn.textContent = '🌑 月食模式';
+                    this.stopEclipseAnimation();
+                }
+            }
+
+            startEclipseAnimation() {
+                this.earthShadow.style.opacity = '1';
+                this.moonOrbit.style.animationDuration = '12s';
+            }
+
+            stopEclipseAnimation() {
+                this.earthShadow.style.opacity = '0';
+                this.moon.classList.remove('eclipse-moon');
+                this.moonOrbit.style.animationDuration = `${8 / this.animationSpeed}s`;
+            }
+
+            startPhaseTracking() {
+                setInterval(() => {
+                    if (this.isPlaying) {
+                        this.updatePhaseTracking();
+                    }
+                }, 100);
+            }
+
+            updatePhaseTracking() {
+                const moonOrbit = this.moonOrbit;
+                const computedStyle = window.getComputedStyle(moonOrbit);
+                const transform = computedStyle.transform;
+                
+                if (transform && transform !== 'none') {
+                    const values = transform.split('(')[1].split(')')[0].split(',');
+                    const a = values[0];
+                    const b = values[1];
+                    let angle = Math.atan2(b, a) * (180 / Math.PI);
+                    
+                    if (angle < 0) angle += 360;
+                    
+                    this.updatePhaseDisplay(angle);
+                }
+            }
+
+            updatePhaseDisplay(angle) {
+                let phaseIndex = 0;
+                
+                if (this.isEclipseMode) {
+                    if (angle >= 180 && angle < 210) {
+                        phaseIndex = 1;
+                        this.moon.classList.add('eclipse-moon');
+                    } else if (angle >= 210 && angle < 270) {
+                        phaseIndex = 2;
+                        this.moon.classList.add('eclipse-moon');
+                    } else if (angle >= 270 && angle < 330) {
+                        phaseIndex = 3;
+                        this.moon.classList.add('eclipse-moon');
+                    } else if (angle >= 330 && angle < 360) {
+                        phaseIndex = 4;
+                        this.moon.classList.add('eclipse-moon');
+                    } else {
+                        phaseIndex = 0;
+                        this.moon.classList.remove('eclipse-moon');
+                    }
+                } else {
+                    phaseIndex = 0;
+                    this.moon.classList.remove('eclipse-moon');
+                }
+                
+                this.phaseName.textContent = this.phases[phaseIndex].name;
+                this.phaseDescription.textContent = this.phases[phaseIndex].description;
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            new LunarEclipseEducation();
+        });
+    </script>
+</body>
+</html>

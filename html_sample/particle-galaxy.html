@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌌 星空粒子银河</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .info h2 {
+            margin-bottom: 10px;
+            font-size: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info p {
+            margin: 5px 0;
+            opacity: 0.8;
+            font-size: 13px;
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: #fff;
+            font-size: 12px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: right;
+        }
+
+        .stats p {
+            margin: 5px 0;
+            opacity: 0.7;
+        }
+
+        .stats span {
+            color: #667eea;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="info">
+        <h2>🌌 星空粒子银河</h2>
+        <p>🖱️ 移动鼠标：粒子跟随</p>
+        <p>🖱️ 点击：创建爆炸效果</p>
+        <p>⌨️ 空格键：切换模式</p>
+    </div>
+
+    <div class="stats">
+        <p>粒子数量: <span id="particleCount">0</span></p>
+        <p>帧率: <span id="fps">0</span> FPS</p>
+        <p>模式: <span id="modeText">跟随</span></p>
+    </div>
+
+    <div class="controls">
+        <button class="btn" onclick="addParticles(100)">✨ 添加粒子</button>
+        <button class="btn" onclick="toggleMode()">🔄 切换模式</button>
+        <button class="btn" onclick="clearParticles()">🗑️ 清空粒子</button>
+        <button class="btn" onclick="randomColor()">🎨 随机颜色</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        
+        let particles = [];
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        let mode = 'follow'; // follow, repel, orbit
+        let colorHue = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 0;
+
+        class Particle {
+            constructor(x, y) {
+                this.x = Number.isFinite(x) ? x : width / 2;
+                this.y = Number.isFinite(y) ? y : height / 2;
+                this.size = Math.random() * 3 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = Math.random() * 0.005 + 0.002;
+                this.hue = colorHue + Math.random() * 60;
+                this.brightness = Math.random() * 50 + 50;
+                this.alpha = Math.random() * 0.5 + 0.5;
+            }
+
+            update() {
+                // 根据模式更新粒子行为
+                if (mode === 'follow') {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > 0 && Number.isFinite(distance)) {
+                        this.speedX += dx / distance * 0.1;
+                        this.speedY += dy / distance * 0.1;
+                    }
+                } else if (mode === 'repel') {
+                    const dx = this.x - mouseX;
+                    const dy = this.y - mouseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > 0 && distance < 200 && Number.isFinite(distance)) {
+                        this.speedX += dx / distance * 0.5;
+                        this.speedY += dy / distance * 0.5;
+                    }
+                } else if (mode === 'orbit') {
+                    const dx = mouseX - this.x;
+                    const dy = mouseY - this.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance > 0 && Number.isFinite(distance)) {
+                        const angle = Math.atan2(dy, dx);
+                        this.speedX += Math.cos(angle + Math.PI / 2) * 0.1;
+                        this.speedY += Math.sin(angle + Math.PI / 2) * 0.1;
+                        this.speedX += dx / distance * 0.02;
+                        this.speedY += dy / distance * 0.02;
+                    }
+                }
+
+                // 应用速度
+                this.x += this.speedX;
+                this.y += this.speedY;
+
+                // 速度衰减
+                this.speedX *= 0.99;
+                this.speedY *= 0.99;
+
+                // 边界检查
+                if (this.x < 0 || this.x > width) this.speedX *= -1;
+                if (this.y < 0 || this.y > height) this.speedY *= -1;
+
+                // 生命衰减
+                this.life -= this.decay;
+                this.alpha = this.life * 0.5;
+
+                return this.life > 0;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = Math.max(0, Math.min(1, this.alpha));
+                ctx.fillStyle = `hsl(${this.hue}, 100%, ${this.brightness}%)`;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, ${this.brightness}%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function addParticles(count, x, y) {
+            const startX = Number.isFinite(x) ? x : width / 2;
+            const startY = Number.isFinite(y) ? y : height / 2;
+            
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * 50;
+                const px = startX + Math.cos(angle) * radius;
+                const py = startY + Math.sin(angle) * radius;
+                particles.push(new Particle(px, py));
+            }
+        }
+
+        function createExplosion(x, y) {
+            const startX = Number.isFinite(x) ? x : width / 2;
+            const startY = Number.isFinite(y) ? y : height / 2;
+            
+            for (let i = 0; i < 50; i++) {
+                const particle = new Particle(startX, startY);
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 2;
+                particle.speedX = Math.cos(angle) * speed;
+                particle.speedY = Math.sin(angle) * speed;
+                particle.size = Math.random() * 5 + 2;
+                particles.push(particle);
+            }
+        }
+
+        function clearParticles() {
+            particles = [];
+        }
+
+        function toggleMode() {
+            const modes = ['follow', 'repel', 'orbit'];
+            const currentIndex = modes.indexOf(mode);
+            mode = modes[(currentIndex + 1) % modes.length];
+            document.getElementById('modeText').textContent = 
+                mode === 'follow' ? '跟随' : 
+                mode === 'repel' ? '排斥' : '环绕';
+        }
+
+        function randomColor() {
+            colorHue = Math.random() * 360;
+        }
+
+        function animate() {
+            // 计算FPS
+            frameCount++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+                document.getElementById('fps').textContent = fps;
+            }
+
+            // 清除画布
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 更新和绘制粒子
+            particles = particles.filter(particle => {
+                if (particle.update()) {
+                    particle.draw();
+                    return true;
+                }
+                return false;
+            });
+
+            // 更新粒子数量显示
+            document.getElementById('particleCount').textContent = particles.length;
+
+            // 自动添加粒子（如果数量太少）
+            if (particles.length < 100 && Math.random() > 0.9) {
+                addParticles(1);
+            }
+
+            // 绘制鼠标位置指示器
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 20, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            if (Math.random() > 0.7) {
+                addParticles(1, mouseX, mouseY);
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            createExplosion(e.clientX, e.clientY);
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                toggleMode();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        });
+
+        // 初始化粒子
+        addParticles(200);
+
+        // 启动动画
+        animate();
+
+        // 定期改变颜色
+        setInterval(() => {
+            colorHue = (colorHue + 1) % 360;
+        }, 100);
+    </script>
+</body>
+</html>

@@ -5,8 +5,12 @@ set -e
 
 WORKSPACE="/home/ubuntu/.openclaw/workspace"
 OUTPUT_DIR="$WORKSPACE"  # HTML 文件直接保存在根目录
-LOG_FILE="$WORKSPACE/memory/page-generator.log"
-HISTORY_FILE="$WORKSPACE/memory/page-history.json"
+DATA_DIR="$WORKSPACE/scripts/data"
+LOG_FILE="$DATA_DIR/page-generator.log"
+HISTORY_FILE="$DATA_DIR/page-history.json"
+
+# 创建数据目录（如果不存在）
+mkdir -p "$DATA_DIR"
 
 # 记录日志
 log() {

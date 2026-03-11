@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>霓虹时钟 - Neon Clock</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        .clock-container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+        }
+        
+        .time-display {
+            font-size: clamp(3rem, 12vw, 10rem);
+            font-weight: bold;
+            letter-spacing: 0.1em;
+            text-shadow: 
+                0 0 10px currentColor,
+                0 0 20px currentColor,
+                0 0 40px currentColor,
+                0 0 80px currentColor;
+            animation: pulse 2s ease-in-out infinite;
+            transition: color 0.5s ease;
+        }
+        
+        .date-display {
+            font-size: clamp(1rem, 3vw, 2rem);
+            margin-top: 20px;
+            letter-spacing: 0.3em;
+            opacity: 0.8;
+            text-shadow: 0 0 10px currentColor;
+            transition: color 0.5s ease;
+        }
+        
+        .seconds-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: clamp(300px, 80vw, 600px);
+            height: clamp(300px, 80vw, 600px);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.85; }
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 100;
+            text-align: center;
+        }
+        
+        .color-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            z-index: 100;
+            border: 2px solid currentColor;
+            text-shadow: 0 0 10px currentColor;
+            box-shadow: 0 0 20px currentColor;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="particles"></canvas>
+    
+    <div class="clock-container">
+        <canvas class="seconds-ring" id="secondsRing"></canvas>
+        <div class="time-display" id="time">00:00:00</div>
+        <div class="date-display" id="date">2026年03月12日 星期四</div>
+    </div>
+    
+    <div class="info">
+        <span>🖱️ 点击切换颜色主题 | 移动鼠标影响粒子</span>
+    </div>
+    
+    <div class="color-indicator" id="colorIndicator">经典霓虹</div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            PARTICLE_COUNT: 100,
+            TRAIL_LENGTH: 20
+        };
+
+        // 颜色主题
+        const colorThemes = [
+            { name: '经典霓虹', primary: '#00ffff', secondary: '#ff00ff', tertiary: '#ffff00' },
+            { name: '赛博朋克', primary: '#ff0080', secondary: '#00ff80', tertiary: '#8000ff' },
+            { name: '复古绿', primary: '#00ff00', secondary: '#00cc00', tertiary: '#88ff88' },
+            { name: '日落橙', primary: '#ff6600', secondary: '#ffcc00', tertiary: '#ff3366' },
+            { name: '冰蓝', primary: '#00aaff', secondary: '#0066ff', tertiary: '#66ccff' }
+        ];
+
+        let currentTheme = 0;
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+
+        // Canvas 设置
+        const particleCanvas = document.getElementById('particles');
+        const pCtx = particleCanvas.getContext('2d');
+        const ringCanvas = document.getElementById('secondsRing');
+        const rCtx = ringCanvas.getContext('2d');
+
+        let width, height, ringSize;
+
+        // 粒子类
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const theme = colorThemes[currentTheme];
+                const colors = [theme.primary, theme.secondary, theme.tertiary];
+                
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.size = Math.random() * 3 + 1;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.alpha = Math.random() * 0.5 + 0.3;
+                this.pulseSpeed = Math.random() * 0.05 + 0.02;
+                this.pulseOffset = Math.random() * Math.PI * 2;
+            }
+
+            update(time) {
+                // 鼠标吸引
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 200 && dist > 0) {
+                    const force = (200 - dist) / 200 * 0.5;
+                    this.vx += (dx / dist) * force;
+                    this.vy += (dy / dist) * force;
+                }
+
+                // 速度衰减
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 边界处理
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                // 脉冲效果
+                this.currentAlpha = this.alpha * (0.7 + Math.sin(time * this.pulseSpeed + this.pulseOffset) * 0.3);
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.currentAlpha;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 连线
+        function drawConnections(particles) {
+            const theme = colorThemes[currentTheme];
+            
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 100) {
+                        pCtx.beginPath();
+                        pCtx.moveTo(particles[i].x, particles[i].y);
+                        pCtx.lineTo(particles[j].x, particles[j].y);
+                        pCtx.strokeStyle = theme.primary;
+                        pCtx.globalAlpha = (1 - dist / 100) * 0.2;
+                        pCtx.lineWidth = 1;
+                        pCtx.stroke();
+                        pCtx.globalAlpha = 1;
+                    }
+                }
+            }
+        }
+
+        let particles = [];
+
+        function init() {
+            resize();
+            particles = [];
+            for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resize() {
+            width = particleCanvas.width = window.innerWidth;
+            height = particleCanvas.height = window.innerHeight;
+            
+            const ringElement = document.getElementById('secondsRing');
+            ringSize = ringElement.offsetWidth;
+            ringCanvas.width = ringSize;
+            ringCanvas.height = ringSize;
+        }
+
+        // 更新时钟
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            const ms = now.getMilliseconds();
+
+            const theme = colorThemes[currentTheme];
+            
+            document.getElementById('time').textContent = `${hours}:${minutes}:${seconds}`;
+            document.getElementById('time').style.color = theme.primary;
+            document.getElementById('date').style.color = theme.secondary;
+
+            // 日期
+            const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            const dateStr = `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日 ${days[now.getDay()]}`;
+            document.getElementById('date').textContent = dateStr;
+
+            // 绘制秒针环
+            drawSecondsRing(now.getSeconds() + ms / 1000, now.getMinutes() + now.getSeconds() / 60);
+        }
+
+        function drawSecondsRing(seconds, minutes) {
+            const theme = colorThemes[currentTheme];
+            const centerX = ringSize / 2;
+            const centerY = ringSize / 2;
+            const radius = ringSize / 2 - 20;
+
+            rCtx.clearRect(0, 0, ringSize, ringSize);
+
+            // 背景环
+            rCtx.beginPath();
+            rCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+            rCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            rCtx.lineWidth = 4;
+            rCtx.stroke();
+
+            // 秒针弧
+            const secondsAngle = (seconds / 60) * Math.PI * 2 - Math.PI / 2;
+            rCtx.beginPath();
+            rCtx.arc(centerX, centerY, radius, -Math.PI / 2, secondsAngle);
+            rCtx.strokeStyle = theme.primary;
+            rCtx.lineWidth = 4;
+            rCtx.lineCap = 'round';
+            rCtx.shadowBlur = 20;
+            rCtx.shadowColor = theme.primary;
+            rCtx.stroke();
+            rCtx.shadowBlur = 0;
+
+            // 分钟弧
+            const minutesAngle = (minutes / 60) * Math.PI * 2 - Math.PI / 2;
+            rCtx.beginPath();
+            rCtx.arc(centerX, centerY, radius - 15, -Math.PI / 2, minutesAngle);
+            rCtx.strokeStyle = theme.secondary;
+            rCtx.lineWidth = 3;
+            rCtx.shadowBlur = 15;
+            rCtx.shadowColor = theme.secondary;
+            rCtx.stroke();
+            rCtx.shadowBlur = 0;
+
+            // 刻度
+            for (let i = 0; i < 12; i++) {
+                const angle = (i / 12) * Math.PI * 2 - Math.PI / 2;
+                const x1 = centerX + Math.cos(angle) * (radius + 10);
+                const y1 = centerY + Math.sin(angle) * (radius + 10);
+                const x2 = centerX + Math.cos(angle) * (radius + 20);
+                const y2 = centerY + Math.sin(angle) * (radius + 20);
+
+                rCtx.beginPath();
+                rCtx.moveTo(x1, y1);
+                rCtx.lineTo(x2, y2);
+                rCtx.strokeStyle = theme.tertiary;
+                rCtx.lineWidth = 2;
+                rCtx.shadowBlur = 10;
+                rCtx.shadowColor = theme.tertiary;
+                rCtx.stroke();
+                rCtx.shadowBlur = 0;
+            }
+        }
+
+        // 动画循环
+        function animate(time) {
+            pCtx.fillStyle = 'rgba(10, 10, 10, 0.1)';
+            pCtx.fillRect(0, 0, width, height);
+
+            particles.forEach(p => {
+                p.update(time);
+                p.draw(pCtx);
+            });
+
+            drawConnections(particles);
+            updateClock();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 切换主题
+        function switchTheme() {
+            currentTheme = (currentTheme + 1) % colorThemes.length;
+            const theme = colorThemes[currentTheme];
+            
+            document.getElementById('colorIndicator').textContent = theme.name;
+            document.getElementById('colorIndicator').style.color = theme.primary;
+            document.getElementById('colorIndicator').style.borderColor = theme.primary;
+            
+            particles.forEach(p => {
+                const colors = [theme.primary, theme.secondary, theme.tertiary];
+                p.color = colors[Math.floor(Math.random() * colors.length)];
+            });
+        }
+
+        // 事件监听
+        window.addEventListener('resize', resize);
+
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        document.addEventListener('click', switchTheme);
+
+        document.addEventListener('touchstart', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // 初始化
+        init();
+        const theme = colorThemes[currentTheme];
+        document.getElementById('colorIndicator').style.color = theme.primary;
+        document.getElementById('colorIndicator').style.borderColor = theme.primary;
+        animate(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>波浪动画 - Ocean Waves</title>
+    <style>
+        /* ========== 全局样式 ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(180deg, #0a1628 0%, #1a3a5c 40%, #2d5a7b 100%);
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        /* ========== Canvas 容器 ========== */
+        #waveCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ========== 信息面板 ========== */
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 30, 60, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 18px 22px;
+            border-radius: 12px;
+            color: #c0e0ff;
+            z-index: 100;
+            border: 1px solid rgba(100, 180, 255, 0.2);
+            max-width: 260px;
+        }
+
+        .info-panel h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #60c0ff, #40e0d0, #60c0ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info-panel p {
+            font-size: 13px;
+            line-height: 1.5;
+            opacity: 0.85;
+        }
+
+        .info-panel .hint {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(100, 180, 255, 0.15);
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        /* ========== 控制面板 ========== */
+        .controls {
+            position: fixed;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 30, 60, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 25px;
+            z-index: 100;
+            border: 1px solid rgba(100, 180, 255, 0.2);
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .controls button {
+            background: transparent;
+            border: 1px solid rgba(96, 192, 255, 0.4);
+            color: #60c0ff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+
+        .controls button:hover {
+            background: rgba(96, 192, 255, 0.2);
+            border-color: #60c0ff;
+        }
+
+        .controls button.active {
+            background: linear-gradient(135deg, rgba(64, 224, 208, 0.4), rgba(96, 192, 255, 0.4));
+            border-color: #40e0d0;
+            color: #fff;
+        }
+
+        .controls .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #60c0ff;
+            font-size: 12px;
+        }
+
+        .controls input[type="range"] {
+            width: 70px;
+            accent-color: #40e0d0;
+        }
+
+        /* ========== 月亮 ========== */
+        .moon {
+            position: fixed;
+            top: 60px;
+            right: 80px;
+            width: 80px;
+            height: 80px;
+            background: radial-gradient(circle at 30% 30%, #fffaea, #e8d5a3);
+            border-radius: 50%;
+            box-shadow: 0 0 60px rgba(255, 250, 200, 0.5), 0 0 100px rgba(255, 250, 200, 0.3);
+            z-index: 50;
+            pointer-events: none;
+        }
+
+        .moon::before {
+            content: '';
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            width: 15px;
+            height: 15px;
+            background: rgba(200, 180, 150, 0.3);
+            border-radius: 50%;
+        }
+
+        .moon::after {
+            content: '';
+            position: absolute;
+            top: 35px;
+            left: 40px;
+            width: 20px;
+            height: 20px;
+            background: rgba(200, 180, 150, 0.2);
+            border-radius: 50%;
+        }
+
+        /* ========== 移动端适配 ========== */
+        @media (max-width: 600px) {
+            .info-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 12px 15px;
+            }
+            .info-panel h1 {
+                font-size: 18px;
+            }
+            .controls {
+                bottom: 15px;
+                padding: 10px 15px;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+            .controls button {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            .controls input[type="range"] {
+                width: 50px;
+            }
+            .moon {
+                width: 50px;
+                height: 50px;
+                top: 30px;
+                right: 30px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 月亮 -->
+    <div class="moon"></div>
+
+    <!-- 信息面板 -->
+    <div class="info-panel">
+        <h1>🌊 海浪</h1>
+        <p>月光下的海浪轻轻拍打着海岸，波光粼粼，宁静而美丽。</p>
+        <div class="hint">
+            💡 移动鼠标改变风向<br>
+            💡 点击制造涟漪
+        </div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="controls">
+        <button id="btnCalm" class="active">平静</button>
+        <button id="btnNormal">普通</button>
+        <button id="btnStorm">风暴</button>
+        <div class="slider-group">
+            <span>风速</span>
+            <input type="range" id="windSlider" min="0" max="100" value="30">
+        </div>
+    </div>
+
+    <!-- 主画布 -->
+    <canvas id="waveCanvas"></canvas>
+
+    <script>
+        // ========== 画布初始化 ==========
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ========== 配置参数 ==========
+        const CONFIG = {
+            waveCount: 5,
+            baseAmplitude: 30,
+            baseSpeed: 0.02,
+            windInfluence: 0.5,
+            modes: {
+                calm: { amplitude: 20, speed: 0.015, foam: 0.3 },
+                normal: { amplitude: 35, speed: 0.025, foam: 0.5 },
+                storm: { amplitude: 60, speed: 0.04, foam: 0.8 }
+            },
+            currentMode: 'calm'
+        };
+
+        // ========== 状态变量 ==========
+        let time = 0;
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let windOffset = 0;
+        let windStrength = 30;
+        let ripples = [];
+
+        // ========== 波浪类 ==========
+        class Wave {
+            constructor(index, total) {
+                this.index = index;
+                this.total = total;
+                this.reset();
+            }
+
+            reset() {
+                this.baseY = canvas.height * (0.5 + this.index * 0.08);
+                this.amplitude = CONFIG.baseAmplitude * (1 - this.index * 0.1);
+                this.frequency = 0.008 + this.index * 0.002;
+                this.speed = CONFIG.baseSpeed * (1 - this.index * 0.15);
+                this.phase = this.index * Math.PI / 3;
+                
+                // 颜色渐变（从浅到深）
+                const alpha = 0.6 - this.index * 0.08;
+                const lightness = 50 - this.index * 8;
+                this.color = `hsla(200, 70%, ${lightness}%, ${alpha})`;
+                this.highlightColor = `hsla(190, 80%, 70%, ${0.3 - this.index * 0.04})`;
+            }
+
+            getY(x) {
+                const mode = CONFIG.modes[CONFIG.currentMode];
+                const amplitude = mode.amplitude * (1 - this.index * 0.12);
+                const speed = mode.speed * (1 - this.index * 0.1);
+                
+                // 主波
+                let y = Math.sin(x * this.frequency + time * speed + this.phase) * amplitude;
+                
+                // 叠加次波
+                y += Math.sin(x * this.frequency * 2.5 + time * speed * 1.5 + this.phase) * amplitude * 0.3;
+                y += Math.sin(x * this.frequency * 0.5 + time * speed * 0.7) * amplitude * 0.5;
+                
+                // 风的影响
+                const windEffect = windOffset * (1 - this.index * 0.15);
+                y += windEffect;
+                
+                return this.baseY + y;
+            }
+
+            draw() {
+                const mode = CONFIG.modes[CONFIG.currentMode];
+                
+                // 绘制波浪填充
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height);
+                
+                for (let x = 0; x <= canvas.width; x += 3) {
+                    const y = this.getY(x);
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.lineTo(canvas.width, canvas.height);
+                ctx.closePath();
+                
+                // 渐变填充
+                const gradient = ctx.createLinearGradient(0, this.baseY - 50, 0, canvas.height);
+                gradient.addColorStop(0, this.highlightColor);
+                gradient.addColorStop(0.3, this.color);
+                gradient.addColorStop(1, `hsla(210, 60%, 20%, 0.9)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 绘制波浪高光
+                if (this.index < 2) {
+                    this.drawHighlights(mode);
+                }
+            }
+
+            drawHighlights(mode) {
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(255, 255, 255, ${0.15 - this.index * 0.05})`;
+                ctx.lineWidth = 2;
+                
+                for (let x = 0; x <= canvas.width; x += 5) {
+                    const y = this.getY(x);
+                    const derivative = this.getY(x + 5) - y;
+                    
+                    // 只在波峰处绘制高光
+                    if (derivative < 0 && derivative > -3) {
+                        ctx.moveTo(x, y);
+                        ctx.lineTo(x + 20, y);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+
+        // ========== 泡沫粒子类 ==========
+        class Foam {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                const waveIndex = Math.floor(Math.random() * CONFIG.waveCount);
+                this.waveIndex = waveIndex;
+                this.size = 2 + Math.random() * 4;
+                this.alpha = 0.3 + Math.random() * 0.4;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.life = 100 + Math.random() * 100;
+                this.maxLife = this.life;
+            }
+
+            update(waves) {
+                this.x += this.speedX + windOffset * 0.05;
+                this.life--;
+                
+                if (this.life <= 0 || this.x < 0 || this.x > canvas.width) {
+                    this.reset();
+                }
+            }
+
+            draw(waves) {
+                if (this.waveIndex >= waves.length) return;
+                
+                const wave = waves[this.waveIndex];
+                const y = wave.getY(this.x);
+                const alpha = (this.life / this.maxLife) * this.alpha;
+                
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.arc(this.x, y - this.size / 2, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ========== 涟漪类 ==========
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 100;
+                this.alpha = 0.6;
+                this.speed = 3;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 0.6 * (1 - this.radius / this.maxRadius);
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+                
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                ctx.lineWidth = 2;
+                ctx.ellipse(this.x, this.y, this.radius, this.radius * 0.3, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            isDead() {
+                return this.radius >= this.maxRadius;
+            }
+        }
+
+        // ========== 星星/萤火虫 ==========
+        const fireflies = [];
+        for (let i = 0; i < 30; i++) {
+            fireflies.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height * 0.4,
+                size: 1 + Math.random() * 2,
+                speedX: (Math.random() - 0.5) * 0.5,
+                speedY: (Math.random() - 0.5) * 0.3,
+                phase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 0.03 + Math.random() * 0.02
+            });
+        }
+
+        function drawFireflies() {
+            fireflies.forEach(ff => {
+                ff.x += ff.speedX;
+                ff.y += ff.speedY;
+                ff.phase += ff.twinkleSpeed;
+                
+                // 边界检查
+                if (ff.x < 0) ff.x = canvas.width;
+                if (ff.x > canvas.width) ff.x = 0;
+                if (ff.y < 0) ff.y = canvas.height * 0.4;
+                if (ff.y > canvas.height * 0.4) ff.y = 0;
+                
+                const alpha = 0.3 + Math.sin(ff.phase) * 0.3;
+                
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(200, 255, 200, ${alpha})`;
+                ctx.shadowColor = 'rgba(150, 255, 150, 0.8)';
+                ctx.shadowBlur = 10;
+                ctx.arc(ff.x, ff.y, ff.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+        }
+
+        // ========== 月光倒影 ==========
+        function drawMoonReflection(waves) {
+            if (waves.length === 0) return;
+            
+            const moonX = canvas.width - 120;
+            const wave = waves[0];
+            
+            for (let i = 0; i < 8; i++) {
+                const x = moonX + (Math.random() - 0.5) * 40;
+                const y = wave.getY(x);
+                const alpha = 0.1 + Math.random() * 0.1;
+                const width = 10 + Math.random() * 20;
+                
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(255, 250, 220, ${alpha})`;
+                ctx.ellipse(x, y, width, 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ========== 初始化 ==========
+        const waves = [];
+        const foams = [];
+
+        for (let i = 0; i < CONFIG.waveCount; i++) {
+            waves.push(new Wave(i, CONFIG.waveCount));
+        }
+
+        for (let i = 0; i < 50; i++) {
+            foams.push(new Foam());
+        }
+
+        // ========== 鼠标交互 ==========
+        document.addEventListener('mousemove', (e) => {
+            const prevMouseX = mouseX;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // 计算风向偏移
+            const deltaX = mouseX - prevMouseX;
+            windOffset += deltaX * CONFIG.windInfluence * 0.1;
+            windOffset = Math.max(-50, Math.min(50, windOffset));
+        });
+
+        document.addEventListener('click', (e) => {
+            // 创建涟漪
+            ripples.push(new Ripple(e.clientX, e.clientY));
+            
+            // 创建额外的泡沫
+            for (let i = 0; i < 5; i++) {
+                const foam = new Foam();
+                foam.x = e.clientX + (Math.random() - 0.5) * 50;
+                foam.reset = () => {}; // 防止立即重置
+                foams.push(foam);
+            }
+        });
+
+        // 触摸支持
+        document.addEventListener('touchmove', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchstart', (e) => {
+            ripples.push(new Ripple(e.touches[0].clientX, e.touches[0].clientY));
+        });
+
+        // ========== 控制按钮 ==========
+        document.getElementById('btnCalm').addEventListener('click', function() {
+            CONFIG.currentMode = 'calm';
+            updateModeButtons();
+        });
+
+        document.getElementById('btnNormal').addEventListener('click', function() {
+            CONFIG.currentMode = 'normal';
+            updateModeButtons();
+        });
+
+        document.getElementById('btnStorm').addEventListener('click', function() {
+            CONFIG.currentMode = 'storm';
+            updateModeButtons();
+        });
+
+        document.getElementById('windSlider').addEventListener('input', function() {
+            windStrength = parseInt(this.value);
+        });
+
+        function updateModeButtons() {
+            document.querySelectorAll('.controls button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const btnMap = { 'calm': 'btnCalm', 'normal': 'btnNormal', 'storm': 'btnStorm' };
+            document.getElementById(btnMap[CONFIG.currentMode]).classList.add('active');
+        }
+
+        // ========== 绘制天空渐变 ==========
+        function drawSky() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.6);
+            gradient.addColorStop(0, '#0a1628');
+            gradient.addColorStop(0.5, '#1a3a5c');
+            gradient.addColorStop(1, '#2d5a7b');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height * 0.6);
+        }
+
+        // ========== 主动画循环 ==========
+        function animate() {
+            time++;
+            
+            // 风力自然衰减
+            windOffset *= 0.98;
+            windOffset += (windStrength - 50) * 0.01;
+            
+            // 绘制天空
+            drawSky();
+            
+            // 绘制萤火虫
+            drawFireflies();
+            
+            // 绘制月光倒影
+            drawMoonReflection(waves);
+            
+            // 绘制波浪（从后到前）
+            for (let i = waves.length - 1; i >= 0; i--) {
+                waves[i].draw();
+            }
+            
+            // 更新和绘制泡沫
+            foams.forEach(foam => {
+                foam.update(waves);
+                foam.draw(waves);
+            });
+            
+            // 更新和绘制涟漪
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                ripples[i].update();
+                ripples[i].draw();
+                if (ripples[i].isDead()) {
+                    ripples.splice(i, 1);
+                }
+            }
+            
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        animate();
+
+        // 窗口大小改变
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            waves.forEach(wave => wave.reset());
+        });
+    </script>
+</body>
+</html>

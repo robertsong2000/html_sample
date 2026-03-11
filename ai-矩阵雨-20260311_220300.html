@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矩阵雨 - Matrix Rain</title>
+    <style>
+        /* ========== 全局样式 ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* ========== Canvas 容器 ========== */
+        #matrixCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ========== 信息面板 ========== */
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 20, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 18px 22px;
+            border-radius: 12px;
+            color: #00ff00;
+            z-index: 100;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            max-width: 260px;
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.1);
+        }
+
+        .info-panel h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-shadow: 0 0 10px #00ff00, 0 0 20px #00ff00;
+        }
+
+        .info-panel p {
+            font-size: 13px;
+            line-height: 1.5;
+            opacity: 0.85;
+        }
+
+        .info-panel .hint {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(0, 255, 0, 0.2);
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        /* ========== 统计面板 ========== */
+        .stats-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 20, 0, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 12px 18px;
+            border-radius: 12px;
+            color: #00ff00;
+            z-index: 100;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            font-size: 12px;
+            text-shadow: 0 0 5px #00ff00;
+        }
+
+        .stats-panel .stat {
+            margin-bottom: 6px;
+        }
+
+        .stats-panel .stat:last-child {
+            margin-bottom: 0;
+        }
+
+        .stats-panel .value {
+            color: #88ff88;
+            font-weight: bold;
+        }
+
+        /* ========== 控制面板 ========== */
+        .controls {
+            position: fixed;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 20, 0, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 25px;
+            z-index: 100;
+            border: 1px solid rgba(0, 255, 0, 0.3);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .controls button {
+            background: transparent;
+            border: 1px solid rgba(0, 255, 0, 0.5);
+            color: #00ff00;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+            text-shadow: 0 0 5px #00ff00;
+        }
+
+        .controls button:hover {
+            background: rgba(0, 255, 0, 0.2);
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+        }
+
+        .controls button.active {
+            background: rgba(0, 255, 0, 0.3);
+            border-color: #00ff00;
+            color: #fff;
+        }
+
+        .controls .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #00ff00;
+            font-size: 12px;
+        }
+
+        .controls input[type="range"] {
+            width: 70px;
+            accent-color: #00ff00;
+        }
+
+        /* ========== 移动端适配 ========== */
+        @media (max-width: 600px) {
+            .info-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 12px 15px;
+            }
+            .info-panel h1 {
+                font-size: 18px;
+            }
+            .stats-panel {
+                top: auto;
+                bottom: 90px;
+                right: 10px;
+                left: 10px;
+                text-align: center;
+            }
+            .controls {
+                bottom: 15px;
+                padding: 10px 15px;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+            .controls button {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            .controls input[type="range"] {
+                width: 50px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 信息面板 -->
+    <div class="info-panel">
+        <h1>💻 矩阵雨</h1>
+        <p>数字雨滴从天而降，如同《黑客帝国》中的经典场景，揭示着代码的奥秘。</p>
+        <div class="hint">
+            💡 移动鼠标影响雨滴方向<br>
+            💡 点击触发代码爆发
+        </div>
+    </div>
+
+    <!-- 统计面板 -->
+    <div class="stats-panel">
+        <div class="stat">📊 列数: <span class="value" id="colCount">0</span></div>
+        <div class="stat">💧 活跃雨滴: <span class="value" id="dropCount">0</span></div>
+        <div class="stat">⚡ FPS: <span class="value" id="fpsDisplay">60</span></div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="controls">
+        <button id="modeGreen" class="active">经典绿</button>
+        <button id="modeBlue">赛博蓝</button>
+        <button id="modeRainbow">彩虹</button>
+        <div class="slider-group">
+            <span>速度</span>
+            <input type="range" id="speedSlider" min="0.5" max="2" step="0.1" value="1">
+        </div>
+    </div>
+
+    <!-- 主画布 -->
+    <canvas id="matrixCanvas"></canvas>
+
+    <script>
+        // ========== 画布初始化 ==========
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initColumns();
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ========== 配置参数 ==========
+        const CONFIG = {
+            fontSize: 16,
+            speedMultiplier: 1,
+            colorMode: 'green', // green, blue, rainbow
+            colors: {
+                green: { head: '#fff', tail: '#00ff00', glow: 'rgba(0, 255, 0, 0.8)' },
+                blue: { head: '#fff', tail: '#00ccff', glow: 'rgba(0, 204, 255, 0.8)' },
+                rainbow: { head: '#fff', tail: 'rainbow', glow: 'rainbow' }
+            }
+        };
+
+        // ========== 字符集 ==========
+        const charSets = {
+            // 日文片假名
+            katakana: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
+            // 数字
+            numbers: '0123456789',
+            // 符号
+            symbols: '!@#$%^&*()_+-=[]{}|;:,.<>?',
+            // 二进制
+            binary: '01'
+        };
+
+        // 所有可用字符
+        const allChars = charSets.katakana + charSets.numbers + charSets.symbols;
+
+        // ========== 状态变量 ==========
+        let columns = [];
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let bursts = [];
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+
+        // ========== 列类 ==========
+        class Column {
+            constructor(x) {
+                this.x = x;
+                this.reset();
+            }
+
+            reset() {
+                this.y = Math.random() * -500;
+                this.speed = (3 + Math.random() * 5) * CONFIG.speedMultiplier;
+                this.chars = [];
+                this.length = 10 + Math.floor(Math.random() * 25);
+                this.charChangeRate = 0.05;
+                
+                // 初始化字符
+                for (let i = 0; i < this.length; i++) {
+                    this.chars.push(this.getRandomChar());
+                }
+            }
+
+            getRandomChar() {
+                return allChars[Math.floor(Math.random() * allChars.length)];
+            }
+
+            update() {
+                this.y += this.speed;
+                
+                // 鼠标影响
+                const dx = mouseX - canvas.width / 2;
+                const influence = (dx / canvas.width) * 2;
+                this.x += influence;
+                
+                // 随机改变字符
+                if (Math.random() < this.charChangeRate) {
+                    const index = Math.floor(Math.random() * this.chars.length);
+                    this.chars[index] = this.getRandomChar();
+                }
+                
+                // 重置
+                if (this.y > canvas.height + this.length * CONFIG.fontSize) {
+                    this.reset();
+                }
+            }
+
+            getColor(index, total) {
+                const mode = CONFIG.colorMode;
+                const colors = CONFIG.colors[mode];
+                
+                if (mode === 'rainbow') {
+                    const hue = (this.x / canvas.width * 360 + index * 5) % 360;
+                    const alpha = 1 - (index / total) * 0.8;
+                    return `hsla(${hue}, 100%, 60%, ${alpha})`;
+                }
+                
+                // 头部亮，尾部暗
+                const alpha = 1 - (index / total) * 0.8;
+                return `rgba(0, ${mode === 'blue' ? '200' : '255'}, ${mode === 'blue' ? '255' : '0'}, ${alpha})`;
+            }
+
+            draw() {
+                const colors = CONFIG.colors[CONFIG.colorMode];
+                
+                for (let i = 0; i < this.chars.length; i++) {
+                    const charY = this.y - i * CONFIG.fontSize;
+                    
+                    if (charY < -CONFIG.fontSize || charY > canvas.height + CONFIG.fontSize) continue;
+                    
+                    ctx.font = `${CONFIG.fontSize}px "Courier New", monospace`;
+                    
+                    if (i === 0) {
+                        // 头部 - 最亮
+                        ctx.fillStyle = colors.head;
+                        ctx.shadowColor = colors.glow === 'rainbow' ? 
+                            `hsl(${this.x / canvas.width * 360}, 100%, 60%)` : colors.glow;
+                        ctx.shadowBlur = 20;
+                    } else {
+                        ctx.fillStyle = this.getColor(i, this.chars.length);
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    ctx.fillText(this.chars[i], this.x, charY);
+                }
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // ========== 爆发粒子类 ==========
+        class BurstParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 5 + Math.random() * 10;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.char = allChars[Math.floor(Math.random() * allChars.length)];
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2; // 重力
+                this.vx *= 0.98;
+                this.life -= this.decay;
+                this.rotation += this.rotationSpeed;
+                
+                // 随机改变字符
+                if (Math.random() < 0.1) {
+                    this.char = allChars[Math.floor(Math.random() * allChars.length)];
+                }
+            }
+
+            draw() {
+                if (this.life <= 0) return;
+                
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                ctx.font = `${CONFIG.fontSize}px "Courier New", monospace`;
+                ctx.fillStyle = `rgba(0, 255, 0, ${this.life})`;
+                ctx.shadowColor = 'rgba(0, 255, 0, 0.8)';
+                ctx.shadowBlur = 10;
+                ctx.fillText(this.char, 0, 0);
+                
+                ctx.restore();
+            }
+        }
+
+        // ========== 初始化列 ==========
+        function initColumns() {
+            columns = [];
+            const columnCount = Math.floor(canvas.width / CONFIG.fontSize) + 1;
+            
+            for (let i = 0; i < columnCount; i++) {
+                columns.push(new Column(i * CONFIG.fontSize));
+            }
+            
+            document.getElementById('colCount').textContent = columnCount;
+        }
+
+        initColumns();
+
+        // ========== 代码爆发 ==========
+        function triggerBurst(x, y) {
+            for (let i = 0; i < 50; i++) {
+                bursts.push(new BurstParticle(x, y));
+            }
+        }
+
+        // ========== 鼠标交互 ==========
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        document.addEventListener('click', (e) => {
+            triggerBurst(e.clientX, e.clientY);
+        });
+
+        // 触摸支持
+        document.addEventListener('touchmove', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        document.addEventListener('touchstart', (e) => {
+            triggerBurst(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        // ========== 控制按钮 ==========
+        document.getElementById('modeGreen').addEventListener('click', function() {
+            CONFIG.colorMode = 'green';
+            updateModeButtons();
+        });
+
+        document.getElementById('modeBlue').addEventListener('click', function() {
+            CONFIG.colorMode = 'blue';
+            updateModeButtons();
+        });
+
+        document.getElementById('modeRainbow').addEventListener('click', function() {
+            CONFIG.colorMode = 'rainbow';
+            updateModeButtons();
+        });
+
+        document.getElementById('speedSlider').addEventListener('input', function() {
+            CONFIG.speedMultiplier = parseFloat(this.value);
+            columns.forEach(col => {
+                col.speed = (3 + Math.random() * 5) * CONFIG.speedMultiplier;
+            });
+        });
+
+        function updateModeButtons() {
+            document.querySelectorAll('.controls button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const btnMap = { 'green': 'modeGreen', 'blue': 'modeBlue', 'rainbow': 'modeRainbow' };
+            document.getElementById(btnMap[CONFIG.colorMode]).classList.add('active');
+        }
+
+        // ========== 更新统计 ==========
+        function updateStats() {
+            document.getElementById('dropCount').textContent = columns.filter(c => c.y > 0).length;
+            
+            // FPS计算
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                fps = Math.round(frameCount * 1000 / (now - lastTime));
+                document.getElementById('fpsDisplay').textContent = fps;
+                frameCount = 0;
+                lastTime = now;
+            }
+        }
+
+        // ========== 主动画循环 ==========
+        function animate() {
+            // 半透明黑色覆盖，产生拖尾效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 更新和绘制列
+            columns.forEach(column => {
+                column.update();
+                column.draw();
+            });
+            
+            // 更新和绘制爆发粒子
+            for (let i = bursts.length - 1; i >= 0; i--) {
+                bursts[i].update();
+                bursts[i].draw();
+                if (bursts[i].life <= 0) {
+                    bursts.splice(i, 1);
+                }
+            }
+            
+            // 更新统计
+            updateStats();
+            
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        animate();
+    </script>
+</body>
+</html>

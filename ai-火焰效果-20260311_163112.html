@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火焰效果 - 粒子系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0a;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        /* 左上角信息面板 */
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 100, 0, 0.3);
+        }
+        
+        .info-panel h1 {
+            font-size: 20px;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #ff6b35, #ffd93d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .info-panel p {
+            opacity: 0.8;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        /* 控制面板 */
+        .control-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 15px 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 100, 0, 0.3);
+            color: #fff;
+            z-index: 100;
+        }
+        
+        .control-panel label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        
+        .control-panel input[type="range"] {
+            width: 150px;
+            height: 6px;
+            -webkit-appearance: none;
+            background: rgba(255, 107, 53, 0.3);
+            border-radius: 3px;
+            outline: none;
+        }
+        
+        .control-panel input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #ff6b35, #ffd93d);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .value-display {
+            display: inline-block;
+            width: 40px;
+            text-align: right;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <!-- 信息面板 -->
+    <div class="info-panel">
+        <h1>🔥 火焰效果</h1>
+        <p>移动鼠标改变风向<br>点击产生火焰爆发<br>滚轮调节火焰强度</p>
+    </div>
+    
+    <!-- 控制面板 -->
+    <div class="control-panel">
+        <label>
+            风力方向: <input type="range" id="windX" min="-5" max="5" value="0" step="0.1">
+            <span class="value-display" id="windXValue">0</span>
+        </label>
+        <label>
+            火焰强度: <input type="range" id="intensity" min="1" max="10" value="5" step="0.5">
+            <span class="value-display" id="intensityValue">5</span>
+        </label>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        // 获取画布和上下文
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置画布尺寸
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // 粒子池 - 避免频繁创建对象
+        const particlePool = [];
+        const maxParticles = 800;
+        let activeParticles = 0;
+        
+        // 控制参数
+        let windX = 0;           // 风力方向
+        let intensity = 5;       // 火焰强度
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height;
+        
+        // 火焰颜色渐变
+        const fireColors = [
+            { r: 255, g: 255, b: 200 },  // 黄白色（核心）
+            { r: 255, g: 200, b: 50 },   // 金黄色
+            { r: 255, g: 120, b: 20 },   // 橙色
+            { r: 255, g: 50, b: 0 },     // 红橙色
+            { r: 180, g: 20, b: 0 },     // 深红色
+            { r: 80, g: 10, b: 0 }       // 暗红色（边缘）
+        ];
+        
+        // 根据生命周期获取颜色
+        function getFireColor(life, maxLife) {
+            const ratio = 1 - (life / maxLife);
+            const colorIndex = Math.min(Math.floor(ratio * (fireColors.length - 1)), fireColors.length - 2);
+            const colorRatio = (ratio * (fireColors.length - 1)) - colorIndex;
+            
+            const c1 = fireColors[colorIndex];
+            const c2 = fireColors[colorIndex + 1];
+            
+            return {
+                r: Math.floor(c1.r + (c2.r - c1.r) * colorRatio),
+                g: Math.floor(c1.g + (c2.g - c1.g) * colorRatio),
+                b: Math.floor(c1.b + (c2.b - c1.b) * colorRatio)
+            };
+        }
+        
+        // 粒子类
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                // 从底部中心区域发射
+                const sourceX = canvas.width / 2 + (Math.random() - 0.5) * 100;
+                const sourceY = canvas.height - 20;
+                
+                this.x = sourceX;
+                this.y = sourceY;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -Math.random() * 3 - 2;
+                this.life = Math.random() * 60 + 40;
+                this.maxLife = this.life;
+                this.size = Math.random() * 8 + 4;
+                this.originalSize = this.size;
+            }
+            
+            update() {
+                // 应用物理
+                this.vx += windX * 0.02;
+                this.vy -= 0.05; // 向上的浮力
+                
+                // 添加随机抖动
+                this.vx += (Math.random() - 0.5) * 0.3;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 生命周期衰减
+                this.life--;
+                
+                // 尺寸随生命周期变化
+                const lifeRatio = this.life / this.maxLife;
+                this.size = this.originalSize * lifeRatio;
+                
+                return this.life > 0 && this.size > 0.5;
+            }
+            
+            draw() {
+                const color = getFireColor(this.life, this.maxLife);
+                const alpha = Math.min(this.life / this.maxLife + 0.3, 1);
+                
+                // 绘制发光效果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 2
+                );
+                gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`);
+                gradient.addColorStop(0.4, `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // 初始化粒子池
+        for (let i = 0; i < maxParticles; i++) {
+            particlePool.push(new Particle());
+        }
+        
+        // 发射粒子
+        function emitParticle() {
+            if (activeParticles < maxParticles) {
+                const particle = particlePool[activeParticles];
+                particle.reset();
+                activeParticles++;
+            }
+        }
+        
+        // 火焰爆发效果
+        function burst(x, y) {
+            const burstCount = 50;
+            for (let i = 0; i < burstCount && activeParticles < maxParticles; i++) {
+                const particle = particlePool[activeParticles];
+                particle.x = x;
+                particle.y = y;
+                particle.vx = (Math.random() - 0.5) * 8;
+                particle.vy = -Math.random() * 8 - 2;
+                particle.life = Math.random() * 40 + 30;
+                particle.maxLife = particle.life;
+                particle.size = Math.random() * 10 + 5;
+                particle.originalSize = particle.size;
+                activeParticles++;
+            }
+        }
+        
+        // 更新和渲染
+        function animate() {
+            // 清除画布（带半透明以产生拖尾效果）
+            ctx.fillStyle = 'rgba(10, 10, 10, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 设置混合模式
+            ctx.globalCompositeOperation = 'lighter';
+            
+            // 根据强度发射粒子
+            const emitCount = Math.floor(intensity * 1.5);
+            for (let i = 0; i < emitCount; i++) {
+                emitParticle();
+            }
+            
+            // 更新和绘制粒子
+            for (let i = activeParticles - 1; i >= 0; i--) {
+                const particle = particlePool[i];
+                if (particle.update()) {
+                    particle.draw();
+                } else {
+                    // 粒子死亡，交换到池末尾
+                    activeParticles--;
+                    particlePool[i] = particlePool[activeParticles];
+                    particlePool[activeParticles] = particle;
+                }
+            }
+            
+            // 绘制底部光源
+            const baseGlow = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height, 0,
+                canvas.width / 2, canvas.height, 200
+            );
+            baseGlow.addColorStop(0, 'rgba(255, 100, 20, 0.3)');
+            baseGlow.addColorStop(0.5, 'rgba(255, 50, 0, 0.1)');
+            baseGlow.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            ctx.fillStyle = baseGlow;
+            ctx.fillRect(0, canvas.height - 200, canvas.width, 200);
+            
+            // 重置混合模式
+            ctx.globalCompositeOperation = 'source-over';
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 鼠标移动 - 改变风向
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // 根据鼠标位置计算风向
+            const centerX = canvas.width / 2;
+            windX = (mouseX - centerX) / centerX * 3;
+        });
+        
+        // 鼠标点击 - 火焰爆发
+        canvas.addEventListener('click', (e) => {
+            burst(e.clientX, e.clientY);
+        });
+        
+        // 滚轮 - 调节强度
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            intensity = Math.max(1, Math.min(10, intensity - e.deltaY / 100));
+            document.getElementById('intensity').value = intensity;
+            document.getElementById('intensityValue').textContent = intensity.toFixed(1);
+        });
+        
+        // 控制面板事件
+        document.getElementById('windX').addEventListener('input', (e) => {
+            windX = parseFloat(e.target.value);
+            document.getElementById('windXValue').textContent = windX.toFixed(1);
+        });
+        
+        document.getElementById('intensity').addEventListener('input', (e) => {
+            intensity = parseFloat(e.target.value);
+            document.getElementById('intensityValue').textContent = intensity.toFixed(1);
+        });
+        
+        // 开始动画
+        animate();
+        
+        // 性能监控（控制台输出）
+        let lastTime = performance.now();
+        let frameCount = 0;
+        setInterval(() => {
+            const now = performance.now();
+            const fps = frameCount / ((now - lastTime) / 1000);
+            console.log(`FPS: ${fps.toFixed(1)} | 粒子数: ${activeParticles}`);
+            frameCount = 0;
+            lastTime = now;
+        }, 2000);
+        
+        // 计帧
+        const originalAnimate = animate;
+        frameCount = 0;
+    </script>
+</body>
+</html>

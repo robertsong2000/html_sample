@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>烟花盛宴 - Fireworks</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 50%, #2a1a2a 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 200, 100, 0.5);
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+        
+        .mode-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 12px;
+            z-index: 100;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fireworks"></canvas>
+    
+    <div class="info">
+        <span>🎆 点击发射烟花 | 🖱️ 按住拖动创建烟花轨迹 | 🔄 双击切换模式 | ⌨️ 空格键连发</span>
+    </div>
+    
+    <div class="stats" id="stats">
+        <div>FPS: <span id="fps">60</span></div>
+        <div>烟花: <span id="count">0</span></div>
+        <div>粒子: <span id="particles">0</span></div>
+    </div>
+    
+    <div class="mode-indicator" id="mode">模式: 自动</div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            GRAVITY: 0.08,
+            FRICTION: 0.99,
+            PARTICLE_COUNT: 80,
+            TRAIL_LENGTH: 3,
+            AUTO_INTERVAL: 800
+        };
+
+        // 烟花类型
+        const fireworkTypes = [
+            { name: '球形', shape: 'sphere', colors: ['#ff0040', '#ff8000', '#ffff00'] },
+            { name: '心形', shape: 'heart', colors: ['#ff1493', '#ff69b4', '#ffb6c1'] },
+            { name: '星形', shape: 'star', colors: ['#00ffff', '#0080ff', '#8000ff'] },
+            { name: '螺旋', shape: 'spiral', colors: ['#00ff00', '#80ff00', '#ffff00'] },
+            { name: '菊花', shape: 'chrysanthemum', colors: ['#ff6600', '#ff3300', '#ff9900'] },
+            { name: '双环', shape: 'ring', colors: ['#ff00ff', '#00ffff', '#ffff00'] }
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('fireworks');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let fireworks = [];
+        let particles = [];
+        let mouseX = 0;
+        let mouseY = 0;
+        let isMouseDown = false;
+        let autoMode = true;
+        let lastAutoTime = 0;
+
+        // 颜色工具
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 255, g: 255, b: 255 };
+        }
+
+        function randomColor(colors) {
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // 烟花类
+        class Firework {
+            constructor(sx, sy, tx, ty, type) {
+                this.x = sx;
+                this.y = sy;
+                this.sx = sx;
+                this.sy = sy;
+                this.tx = tx;
+                this.ty = ty;
+                
+                this.type = type || fireworkTypes[Math.floor(Math.random() * fireworkTypes.length)];
+                this.color = randomColor(this.type.colors);
+                
+                const angle = Math.atan2(ty - sy, tx - sx);
+                const speed = 12 + Math.random() * 4;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                this.trail = [];
+                this.alpha = 1;
+                this.reached = false;
+            }
+
+            update() {
+                this.trail.push({ x: this.x, y: this.y, alpha: this.alpha });
+                if (this.trail.length > CONFIG.TRAIL_LENGTH) {
+                    this.trail.shift();
+                }
+
+                this.vy += CONFIG.GRAVITY;
+                this.x += this.vx;
+                this.y += this.vy;
+
+                const dist = Math.sqrt(
+                    Math.pow(this.tx - this.x, 2) + 
+                    Math.pow(this.ty - this.y, 2)
+                );
+
+                if (dist < 20 || this.vy >= 0) {
+                    this.reached = true;
+                    this.explode();
+                }
+
+                return !this.reached;
+            }
+
+            explode() {
+                const particleCount = CONFIG.PARTICLE_COUNT + Math.floor(Math.random() * 40);
+                
+                switch (this.type.shape) {
+                    case 'sphere':
+                        this.explodeSphere(particleCount);
+                        break;
+                    case 'heart':
+                        this.explodeHeart(particleCount);
+                        break;
+                    case 'star':
+                        this.explodeStar(particleCount);
+                        break;
+                    case 'spiral':
+                        this.explodeSpiral(particleCount);
+                        break;
+                    case 'chrysanthemum':
+                        this.explodeChrysanthemum(particleCount);
+                        break;
+                    case 'ring':
+                        this.explodeRing(particleCount);
+                        break;
+                    default:
+                        this.explodeSphere(particleCount);
+                }
+            }
+
+            explodeSphere(count) {
+                for (let i = 0; i < count; i++) {
+                    const angle = (Math.PI * 2 / count) * i + Math.random() * 0.2;
+                    const speed = 2 + Math.random() * 4;
+                    particles.push(new Particle(
+                        this.x, this.y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        randomColor(this.type.colors)
+                    ));
+                }
+            }
+
+            explodeHeart(count) {
+                for (let i = 0; i < count; i++) {
+                    const t = (i / count) * Math.PI * 2;
+                    const hx = 16 * Math.pow(Math.sin(t), 3);
+                    const hy = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+                    const speed = 0.15 + Math.random() * 0.05;
+                    particles.push(new Particle(
+                        this.x, this.y,
+                        hx * speed,
+                        hy * speed,
+                        randomColor(this.type.colors)
+                    ));
+                }
+            }
+
+            explodeStar(count) {
+                const points = 5;
+                for (let i = 0; i < count; i++) {
+                    const angle = (Math.PI * 2 / count) * i;
+                    const isPoint = i % (count / points) < (count / points / 2);
+                    const speed = isPoint ? (4 + Math.random() * 2) : (2 + Math.random());
+                    particles.push(new Particle(
+                        this.x, this.y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        randomColor(this.type.colors)
+                    ));
+                }
+            }
+
+            explodeSpiral(count) {
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * Math.PI * 8;
+                    const radius = (i / count) * 5;
+                    particles.push(new Particle(
+                        this.x, this.y,
+                        Math.cos(angle) * radius,
+                        Math.sin(angle) * radius,
+                        randomColor(this.type.colors)
+                    ));
+                }
+            }
+
+            explodeChrysanthemum(count) {
+                const streams = 30;
+                const perStream = Math.floor(count / streams);
+                for (let s = 0; s < streams; s++) {
+                    const baseAngle = (Math.PI * 2 / streams) * s;
+                    for (let i = 0; i < perStream; i++) {
+                        const speed = 1 + i * 0.3;
+                        const angle = baseAngle + (Math.random() - 0.5) * 0.2;
+                        particles.push(new Particle(
+                            this.x, this.y,
+                            Math.cos(angle) * speed,
+                            Math.sin(angle) * speed,
+                            randomColor(this.type.colors),
+                            i * 0.02
+                        ));
+                    }
+                }
+            }
+
+            explodeRing(count) {
+                for (let ring = 0; ring < 2; ring++) {
+                    const ringCount = count / 2;
+                    const speed = 3 + ring * 2;
+                    for (let i = 0; i < ringCount; i++) {
+                        const angle = (Math.PI * 2 / ringCount) * i;
+                        particles.push(new Particle(
+                            this.x, this.y,
+                            Math.cos(angle) * speed,
+                            Math.sin(angle) * speed,
+                            this.type.colors[ring % this.type.colors.length]
+                        ));
+                    }
+                }
+            }
+
+            draw(ctx) {
+                // 绘制轨迹
+                this.trail.forEach((point, i) => {
+                    const alpha = (i / this.trail.length) * 0.5;
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 200, 100, ${alpha})`;
+                    ctx.fill();
+                });
+
+                // 绘制主体
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 粒子类
+        class Particle {
+            constructor(x, y, vx, vy, color, delay = 0) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.color = hexToRgb(color);
+                this.alpha = 1;
+                this.decay = 0.015 + Math.random() * 0.01;
+                this.delay = delay;
+                this.trail = [];
+            }
+
+            update() {
+                if (this.delay > 0) {
+                    this.delay -= 0.016;
+                    return true;
+                }
+
+                this.trail.push({ x: this.x, y: this.y, alpha: this.alpha });
+                if (this.trail.length > 5) {
+                    this.trail.shift();
+                }
+
+                this.vy += CONFIG.GRAVITY;
+                this.vx *= CONFIG.FRICTION;
+                this.vy *= CONFIG.FRICTION;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.alpha -= this.decay;
+
+                return this.alpha > 0;
+            }
+
+            draw(ctx) {
+                if (this.delay > 0) return;
+
+                // 绘制轨迹
+                this.trail.forEach((point, i) => {
+                    const alpha = (i / this.trail.length) * this.alpha * 0.3;
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, 1.5, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${alpha})`;
+                    ctx.fill();
+                });
+
+                // 绘制粒子
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${this.alpha})`;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 初始化
+        function init() {
+            resize();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // 发射烟花
+        function launchFirework(tx, ty, type) {
+            const sx = Math.random() * width;
+            const sy = height;
+            fireworks.push(new Firework(sx, sy, tx || Math.random() * width, ty || height * 0.3 + Math.random() * height * 0.3, type));
+        }
+
+        // FPS 计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // 清空画布（带淡出效果）
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 自动发射
+            if (autoMode && currentTime - lastAutoTime > CONFIG.AUTO_INTERVAL) {
+                launchFirework();
+                lastAutoTime = currentTime;
+            }
+
+            // 更新和绘制烟花
+            fireworks = fireworks.filter(fw => {
+                const alive = fw.update();
+                if (alive) fw.draw(ctx);
+                return alive;
+            });
+
+            // 更新和绘制粒子
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw(ctx);
+                return alive;
+            });
+
+            // 更新统计
+            document.getElementById('count').textContent = fireworks.length;
+            document.getElementById('particles').textContent = particles.length;
+
+            requestAnimationFrame(animate);
+        }
+
+        // 切换模式
+        function toggleMode() {
+            autoMode = !autoMode;
+            document.getElementById('mode').textContent = `模式: ${autoMode ? '自动' : '手动'}`;
+        }
+
+        // 事件监听
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (isMouseDown) {
+                launchFirework(e.clientX, e.clientY);
+            }
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('dblclick', toggleMode);
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            launchFirework(touch.clientX, touch.clientY);
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                // 连发3个烟花
+                for (let i = 0; i < 3; i++) {
+                    setTimeout(() => launchFirework(), i * 100);
+                }
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>银河系 - 3D旋转星系</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        canvas { display: block; }
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #fff;
+            font-size: 14px;
+            z-index: 100;
+            background: rgba(20, 20, 40, 0.7);
+            padding: 15px 20px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(100, 150, 255, 0.3);
+        }
+        .info-panel h1 {
+            font-size: 20px;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #a8c0ff, #3f2b96);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .info-panel p {
+            opacity: 0.8;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="info-panel">
+        <h1>🌌 银河系</h1>
+        <p>移动鼠标旋转视角<br>滚轮缩放<br>点击切换颜色方案</p>
+    </div>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+        
+        // 星星数组
+        const stars = [];
+        const numStars = 3000;
+        const numArms = 5;
+        
+        // 颜色方案
+        const colorSchemes = [
+            { core: '#ffd700', arm: '#87ceeb', bg: '#000010' },
+            { core: '#ff6b9d', arm: '#c44569', bg: '#0a0010' },
+            { core: '#00ff88', arm: '#00ccff', bg: '#001010' },
+            { core: '#ff9500', arm: '#ff5e3a', bg: '#100500' }
+        ];
+        let currentScheme = 0;
+        
+        // 初始化星星
+        for (let i = 0; i < numStars; i++) {
+            const arm = Math.floor(Math.random() * numArms);
+            const distance = Math.random() * 400 + 50;
+            const armAngle = (arm / numArms) * Math.PI * 2;
+            const spread = (Math.random() - 0.5) * 0.5;
+            const spiralAngle = distance * 0.02;
+            
+            stars.push({
+                distance: distance,
+                angle: armAngle + spiralAngle + spread,
+                z: (Math.random() - 0.5) * 100,
+                size: Math.random() * 2 + 0.5,
+                brightness: Math.random() * 0.5 + 0.5,
+                speed: 0.0005 + Math.random() * 0.001
+            });
+        }
+        
+        // 中心核心星星
+        for (let i = 0; i < 500; i++) {
+            const distance = Math.random() * 60;
+            const angle = Math.random() * Math.PI * 2;
+            stars.push({
+                distance: distance,
+                angle: angle,
+                z: (Math.random() - 0.5) * 30,
+                size: Math.random() * 1.5 + 0.5,
+                brightness: Math.random() * 0.3 + 0.7,
+                speed: 0.002 + Math.random() * 0.002,
+                isCore: true
+            });
+        }
+        
+        let rotationX = 0.3;
+        let rotationY = 0;
+        let autoRotate = true;
+        let zoom = 1;
+        
+        // 3D 投影
+        function project(x, y, z) {
+            const cosX = Math.cos(rotationX);
+            const sinX = Math.sin(rotationX);
+            const cosY = Math.cos(rotationY);
+            const sinY = Math.sin(rotationY);
+            
+            const y1 = y * cosX - z * sinX;
+            const z1 = y * sinX + z * cosX;
+            const x1 = x * cosY - z1 * sinY;
+            const z2 = x * sinY + z1 * cosY;
+            
+            const scale = 800 / (800 + z2) * zoom;
+            return {
+                x: canvas.width / 2 + x1 * scale,
+                y: canvas.height / 2 + y1 * scale,
+                scale: scale,
+                z: z2
+            };
+        }
+        
+        function animate() {
+            const scheme = colorSchemes[currentScheme];
+            
+            // 清除画布
+            ctx.fillStyle = scheme.bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 自动旋转
+            if (autoRotate) {
+                rotationY += 0.003;
+            }
+            
+            // 更新星星角度
+            stars.forEach(star => {
+                star.angle += star.speed;
+            });
+            
+            // 计算所有星星的屏幕位置
+            const projectedStars = stars.map(star => {
+                const x = Math.cos(star.angle) * star.distance;
+                const y = Math.sin(star.angle) * star.distance;
+                const proj = project(x, y, star.z);
+                return { ...star, ...proj };
+            });
+            
+            // 按 Z 排序（远的先画）
+            projectedStars.sort((a, b) => b.z - a.z);
+            
+            // 绘制星星
+            projectedStars.forEach(star => {
+                const alpha = star.brightness * Math.max(0.2, star.scale);
+                const color = star.isCore ? scheme.core : scheme.arm;
+                
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = color;
+                ctx.shadowBlur = star.size * 3;
+                ctx.shadowColor = color;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size * star.scale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+            
+            // 绘制中心光晕
+            const centerProj = project(0, 0, 0);
+            const gradient = ctx.createRadialGradient(
+                centerProj.x, centerProj.y, 0,
+                centerProj.x, centerProj.y, 80 * zoom
+            );
+            gradient.addColorStop(0, `${scheme.core}40`);
+            gradient.addColorStop(0.5, `${scheme.core}10`);
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 鼠标交互
+        canvas.addEventListener('mousemove', (e) => {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            rotationY = (e.clientX - centerX) / centerX * 0.5;
+            rotationX = (e.clientY - centerY) / centerY * 0.5 + 0.3;
+            autoRotate = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            autoRotate = true;
+        });
+        
+        // 滚轮缩放
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom = Math.max(0.5, Math.min(2, zoom - e.deltaY / 500));
+        });
+        
+        // 点击切换颜色
+        canvas.addEventListener('click', () => {
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+        });
+        
+        animate();
+    </script>
+</body>
+</html>

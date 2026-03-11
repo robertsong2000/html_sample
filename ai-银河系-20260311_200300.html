@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>银河系 - Galaxy Simulation</title>
+    <style>
+        /* ========== 全局样式 ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        /* ========== Canvas 容器 ========== */
+        #galaxyCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ========== 信息面板 ========== */
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 10, 30, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 18px 22px;
+            border-radius: 12px;
+            color: #e0e0ff;
+            z-index: 100;
+            border: 1px solid rgba(100, 150, 255, 0.2);
+            max-width: 270px;
+        }
+
+        .info-panel h1 {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            background: linear-gradient(90deg, #8888ff, #ff88ff, #88ffff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info-panel p {
+            font-size: 13px;
+            line-height: 1.5;
+            opacity: 0.85;
+        }
+
+        .info-panel .hint {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(100, 150, 255, 0.15);
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        /* ========== 统计面板 ========== */
+        .stats-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(10, 10, 30, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 12px 18px;
+            border-radius: 12px;
+            color: #88aaff;
+            z-index: 100;
+            border: 1px solid rgba(100, 150, 255, 0.2);
+            font-size: 12px;
+        }
+
+        .stats-panel .stat {
+            margin-bottom: 6px;
+        }
+
+        .stats-panel .stat:last-child {
+            margin-bottom: 0;
+        }
+
+        .stats-panel .value {
+            color: #ff88ff;
+            font-weight: bold;
+        }
+
+        /* ========== 控制面板 ========== */
+        .controls {
+            position: fixed;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(10, 10, 30, 0.7);
+            backdrop-filter: blur(10px);
+            padding: 12px 20px;
+            border-radius: 25px;
+            z-index: 100;
+            border: 1px solid rgba(100, 150, 255, 0.2);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .controls button {
+            background: transparent;
+            border: 1px solid rgba(136, 170, 255, 0.4);
+            color: #88aaff;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 12px;
+        }
+
+        .controls button:hover {
+            background: rgba(136, 170, 255, 0.2);
+            border-color: #88aaff;
+        }
+
+        .controls button.active {
+            background: linear-gradient(135deg, rgba(136, 136, 255, 0.4), rgba(255, 136, 255, 0.4));
+            border-color: #ff88ff;
+            color: #fff;
+        }
+
+        .controls .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #88aaff;
+            font-size: 12px;
+        }
+
+        .controls input[type="range"] {
+            width: 80px;
+            accent-color: #ff88ff;
+        }
+
+        /* ========== 移动端适配 ========== */
+        @media (max-width: 600px) {
+            .info-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 12px 15px;
+            }
+            .info-panel h1 {
+                font-size: 18px;
+            }
+            .stats-panel {
+                top: auto;
+                bottom: 90px;
+                right: 10px;
+                left: 10px;
+                text-align: center;
+            }
+            .controls {
+                bottom: 15px;
+                padding: 10px 15px;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 8px;
+            }
+            .controls button {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            .controls input[type="range"] {
+                width: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 信息面板 -->
+    <div class="info-panel">
+        <h1>🌌 银河系</h1>
+        <p>数以亿计的恒星在宇宙中旋转，构成壮丽的螺旋星系。</p>
+        <div class="hint">
+            💡 移动鼠标扭曲时空<br>
+            💡 点击创建超新星爆发
+        </div>
+    </div>
+
+    <!-- 统计面板 -->
+    <div class="stats-panel">
+        <div class="stat">⭐ 恒星数: <span class="value" id="starCount">0</span></div>
+        <div class="stat">💫 粒子数: <span class="value" id="particleCount">0</span></div>
+        <div class="stat">🌀 旋转速度: <span class="value" id="speedDisplay">1.0x</span></div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="controls">
+        <button id="btnSpiral" class="active">螺旋臂</button>
+        <button id="btnCore">星系核</button>
+        <button id="btnDust">尘埃带</button>
+        <div class="speed-control">
+            <span>速度</span>
+            <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1">
+        </div>
+    </div>
+
+    <!-- 主画布 -->
+    <canvas id="galaxyCanvas"></canvas>
+
+    <script>
+        // ========== 画布初始化 ==========
+        const canvas = document.getElementById('galaxyCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ========== 配置参数 ==========
+        const CONFIG = {
+            starCount: 3000,
+            armCount: 4,
+            armSpread: 0.5,
+            coreSize: 0.15,
+            rotationSpeed: 0.0003,
+            showArms: true,
+            showCore: true,
+            showDust: true,
+            speedMultiplier: 1
+        };
+
+        // ========== 状态变量 ==========
+        let centerX = canvas.width / 2;
+        let centerY = canvas.height / 2;
+        let mouseX = centerX;
+        let mouseY = centerY;
+        let warpFactor = 0;
+        let particles = [];
+        let time = 0;
+
+        // ========== 恒星类 ==========
+        class Star {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                // 确定恒星所属的螺旋臂
+                const armIndex = Math.floor(Math.random() * CONFIG.armCount);
+                const armAngle = (armIndex / CONFIG.armCount) * Math.PI * 2;
+                
+                // 距离中心的距离（指数分布，中心更密集）
+                const distanceRatio = Math.random();
+                this.distance = Math.pow(distanceRatio, 0.5) * Math.min(canvas.width, canvas.height) * 0.45;
+                
+                // 螺旋角度
+                const spiralAngle = armAngle + (this.distance / 50) * 0.5;
+                
+                // 添加随机偏移
+                const spread = CONFIG.armSpread * (1 + this.distance / 200);
+                const offset = (Math.random() - 0.5) * spread;
+                
+                this.baseAngle = spiralAngle + offset;
+                this.angle = this.baseAngle;
+                
+                // 旋转速度（内部转得快）
+                this.rotationSpeed = CONFIG.rotationSpeed * (1 + 100 / (this.distance + 50));
+                
+                // 恒星属性
+                this.size = 0.5 + Math.random() * 2;
+                this.brightness = 0.3 + Math.random() * 0.7;
+                
+                // 颜色（基于距离和温度）
+                this.setColor();
+            }
+
+            setColor() {
+                const colors = [
+                    '#ffffff', // 白色
+                    '#aaaaff', // 蓝白色
+                    '#ffffaa', // 黄白色
+                    '#ffccaa', // 橙色
+                    '#ffaaaa', // 红色
+                ];
+                
+                // 中心偏蓝，外围偏红
+                const colorIndex = Math.floor((this.distance / (Math.min(canvas.width, canvas.height) * 0.45)) * (colors.length - 1));
+                this.color = colors[Math.min(colorIndex, colors.length - 1)];
+            }
+
+            update() {
+                // 旋转
+                this.angle += this.rotationSpeed * CONFIG.speedMultiplier;
+                
+                // 时空扭曲效果（鼠标影响）
+                const dx = this.getX() - mouseX;
+                const dy = this.getY() - mouseY;
+                const distToMouse = Math.sqrt(dx * dx + dy * dy);
+                const warpEffect = Math.max(0, 1 - distToMouse / 200) * warpFactor * 0.02;
+                this.angle += warpEffect;
+            }
+
+            getX() {
+                return centerX + Math.cos(this.angle) * this.distance;
+            }
+
+            getY() {
+                return centerY + Math.sin(this.angle) * this.distance;
+            }
+
+            draw() {
+                const x = this.getX();
+                const y = this.getY();
+                
+                // 闪烁效果
+                const twinkle = 0.8 + Math.sin(time * 0.01 + this.baseAngle * 10) * 0.2;
+                const alpha = this.brightness * twinkle;
+                
+                ctx.beginPath();
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = alpha;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = this.size * 2;
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // ========== 尘埃粒子类 ==========
+        class DustParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const distanceRatio = Math.random();
+                this.distance = Math.pow(distanceRatio, 0.7) * Math.min(canvas.width, canvas.height) * 0.4;
+                this.angle = Math.random() * Math.PI * 2;
+                this.rotationSpeed = CONFIG.rotationSpeed * 0.8 * (1 + 80 / (this.distance + 50));
+                this.size = 1 + Math.random() * 3;
+                this.alpha = 0.02 + Math.random() * 0.05;
+                
+                // 尘埃颜色（偏紫偏蓝）
+                const hue = 220 + Math.random() * 60;
+                this.color = `hsla(${hue}, 60%, 50%, ${this.alpha})`;
+            }
+
+            update() {
+                this.angle += this.rotationSpeed * CONFIG.speedMultiplier;
+            }
+
+            getX() {
+                return centerX + Math.cos(this.angle) * this.distance;
+            }
+
+            getY() {
+                return centerY + Math.sin(this.angle) * this.distance;
+            }
+
+            draw() {
+                if (!CONFIG.showDust) return;
+                
+                const x = this.getX();
+                const y = this.getY();
+                
+                ctx.beginPath();
+                ctx.fillStyle = this.color;
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ========== 爆发粒子类 ==========
+        class BurstParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 3 + Math.random() * 8;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.life = 1;
+                this.decay = 0.015 + Math.random() * 0.01;
+                this.size = 1 + Math.random() * 2;
+                this.color = ['#ffffff', '#aaaaff', '#ffaaff', '#aaffff'][Math.floor(Math.random() * 4)];
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                this.life -= this.decay;
+            }
+
+            draw() {
+                if (this.life <= 0) return;
+                
+                ctx.beginPath();
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // ========== 初始化恒星和尘埃 ==========
+        const stars = [];
+        const dustParticles = [];
+
+        for (let i = 0; i < CONFIG.starCount; i++) {
+            stars.push(new Star());
+        }
+
+        for (let i = 0; i < 500; i++) {
+            dustParticles.push(new DustParticle());
+        }
+
+        // ========== 绘制星系核心 ==========
+        function drawGalaxyCore() {
+            if (!CONFIG.showCore) return;
+            
+            // 核心光晕
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.min(canvas.width, canvas.height) * CONFIG.coreSize
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+            gradient.addColorStop(0.3, 'rgba(200, 180, 255, 0.15)');
+            gradient.addColorStop(0.6, 'rgba(150, 100, 200, 0.05)');
+            gradient.addColorStop(1, 'rgba(100, 50, 150, 0)');
+            
+            ctx.beginPath();
+            ctx.fillStyle = gradient;
+            ctx.arc(centerX, centerY, Math.min(canvas.width, canvas.height) * CONFIG.coreSize, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 核心亮点
+            const coreGradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, 20
+            );
+            coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+            coreGradient.addColorStop(0.5, 'rgba(200, 200, 255, 0.4)');
+            coreGradient.addColorStop(1, 'rgba(150, 150, 255, 0)');
+            
+            ctx.beginPath();
+            ctx.fillStyle = coreGradient;
+            ctx.arc(centerX, centerY, 20, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // ========== 绘制背景星空 ==========
+        const backgroundStars = [];
+        for (let i = 0; i < 200; i++) {
+            backgroundStars.push({
+                x: Math.random() * 2000,
+                y: Math.random() * 2000,
+                size: Math.random() * 1.5,
+                alpha: Math.random() * 0.5
+            });
+        }
+
+        function drawBackgroundStars() {
+            backgroundStars.forEach(star => {
+                const x = star.x % canvas.width;
+                const y = star.y % canvas.height;
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.alpha})`;
+                ctx.arc(x, y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // ========== 超新星爆发 ==========
+        function supernova(x, y) {
+            // 创建大量爆发粒子
+            for (let i = 0; i < 100; i++) {
+                particles.push(new BurstParticle(x, y));
+            }
+            
+            // 临时增加扭曲因子
+            warpFactor = 1;
+            setTimeout(() => { warpFactor = 0; }, 500);
+        }
+
+        // ========== 鼠标交互 ==========
+        document.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // 鼠标移动时轻微扭曲
+            warpFactor = Math.min(warpFactor + 0.05, 0.5);
+        });
+
+        document.addEventListener('click', (e) => {
+            supernova(e.clientX, e.clientY);
+        });
+
+        // 触摸支持
+        document.addEventListener('touchmove', (e) => {
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            warpFactor = Math.min(warpFactor + 0.05, 0.5);
+        });
+
+        document.addEventListener('touchstart', (e) => {
+            supernova(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        // ========== 控制按钮 ==========
+        document.getElementById('btnSpiral').addEventListener('click', function() {
+            CONFIG.showArms = !CONFIG.showArms;
+            this.classList.toggle('active');
+        });
+
+        document.getElementById('btnCore').addEventListener('click', function() {
+            CONFIG.showCore = !CONFIG.showCore;
+            this.classList.toggle('active');
+        });
+
+        document.getElementById('btnDust').addEventListener('click', function() {
+            CONFIG.showDust = !CONFIG.showDust;
+            this.classList.toggle('active');
+        });
+
+        document.getElementById('speedSlider').addEventListener('input', function() {
+            CONFIG.speedMultiplier = parseFloat(this.value);
+            document.getElementById('speedDisplay').textContent = CONFIG.speedMultiplier.toFixed(1) + 'x';
+        });
+
+        // ========== 更新统计 ==========
+        function updateStats() {
+            document.getElementById('starCount').textContent = stars.length;
+            document.getElementById('particleCount').textContent = particles.length + dustParticles.length;
+        }
+
+        // ========== 主动画循环 ==========
+        function animate() {
+            time++;
+            
+            // 衰减扭曲因子
+            warpFactor *= 0.95;
+            
+            // 清除画布（带拖尾效果）
+            ctx.fillStyle = 'rgba(0, 0, 5, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制背景星空
+            drawBackgroundStars();
+            
+            // 更新和绘制尘埃
+            dustParticles.forEach(dust => {
+                dust.update();
+                dust.draw();
+            });
+            
+            // 绘制星系核心
+            drawGalaxyCore();
+            
+            // 更新和绘制恒星
+            stars.forEach(star => {
+                if (CONFIG.showArms || star.distance < Math.min(canvas.width, canvas.height) * CONFIG.coreSize * 2) {
+                    star.update();
+                    star.draw();
+                }
+            });
+            
+            // 更新和绘制爆发粒子
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            // 更新统计
+            updateStats();
+            
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        animate();
+
+        // 窗口大小改变时重新计算
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
+        });
+    </script>
+</body>
+</html>

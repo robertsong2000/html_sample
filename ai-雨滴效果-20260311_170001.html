@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雨滴涟漪效果</title>
+    <style>
+        /* ========== 全局样式 ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: linear-gradient(180deg, #2c3e50 0%, #34495e 50%, #1a252f 100%);
+            font-family: 'Microsoft YaHei', sans-serif;
+        }
+
+        /* ========== Canvas 容器 ========== */
+        #rainCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ========== 信息面板 ========== */
+        .info-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(44, 62, 80, 0.75);
+            backdrop-filter: blur(10px);
+            padding: 20px 25px;
+            border-radius: 12px;
+            color: #ecf0f1;
+            z-index: 100;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 280px;
+        }
+
+        .info-panel h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #5dade2;
+        }
+
+        .info-panel p {
+            font-size: 14px;
+            line-height: 1.6;
+            opacity: 0.85;
+        }
+
+        .info-panel .hint {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        /* ========== 移动端适配 ========== */
+        @media (max-width: 480px) {
+            .info-panel {
+                top: 10px;
+                left: 10px;
+                right: 10px;
+                max-width: none;
+                padding: 15px 18px;
+            }
+            .info-panel h1 {
+                font-size: 20px;
+            }
+            .info-panel p {
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 信息面板 -->
+    <div class="info-panel">
+        <h1>🌧️ 雨滴涟漪</h1>
+        <p>静静观赏雨滴落在水面，泛起层层涟漪。灰蓝色的世界里，每一滴水都在讲述自己的故事。</p>
+        <div class="hint">
+            💡 点击任意位置创造雨滴<br>
+            💡 移动鼠标感受微风
+        </div>
+    </div>
+
+    <!-- 主画布 -->
+    <canvas id="rainCanvas"></canvas>
+
+    <script>
+        // ========== 画布初始化 ==========
+        const canvas = document.getElementById('rainCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 设置画布尺寸
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // ========== 配置参数 ==========
+        const CONFIG = {
+            rainCount: 150,           // 雨滴数量
+            rippleMaxRadius: 80,      // 涟漪最大半径
+            rippleExpandSpeed: 2.5,   // 涟漪扩展速度
+            rainSpeed: { min: 8, max: 18 },  // 雨滴速度范围
+            rainLength: { min: 15, max: 35 }, // 雨滴长度范围
+            windInfluence: 0.3,       // 鼠标对风向的影响程度
+            colors: {
+                rain: 'rgba(147, 183, 199, 0.6)',
+                ripple: 'rgba(93, 173, 226, 0.4)',
+                rippleInner: 'rgba(133, 193, 233, 0.2)',
+                background: '#1a252f'
+            }
+        };
+
+        // ========== 风向控制（鼠标交互） ==========
+        let wind = { x: 0, y: 0 };
+        let targetWind = { x: 0, y: 0 };
+
+        // 鼠标移动 - 影响风向
+        document.addEventListener('mousemove', (e) => {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
+            targetWind.x = (e.clientX - centerX) / centerX * CONFIG.windInfluence;
+            targetWind.y = (e.clientY - centerY) / centerY * CONFIG.windInfluence * 0.3;
+        });
+
+        // ========== 雨滴类 ==========
+        class Raindrop {
+            constructor(isManual = false, x = null, y = null) {
+                this.reset(isManual, x, y);
+            }
+
+            // 重置雨滴位置
+            reset(isManual = false, startX = null, startY = null) {
+                if (isManual && startX !== null) {
+                    this.x = startX;
+                    this.y = startY;
+                } else {
+                    this.x = Math.random() * canvas.width;
+                    this.y = -Math.random() * 100;
+                }
+                this.speed = CONFIG.rainSpeed.min + Math.random() * (CONFIG.rainSpeed.max - CONFIG.rainSpeed.min);
+                this.length = CONFIG.rainLength.min + Math.random() * (CONFIG.rainLength.max - CONFIG.rainLength.min);
+                this.opacity = 0.3 + Math.random() * 0.5;
+                this.active = true;
+            }
+
+            // 更新雨滴位置
+            update() {
+                // 应用风向影响
+                this.x += wind.x * this.speed;
+                this.y += this.speed;
+
+                // 检查是否落到水面
+                const waterLevel = canvas.height * 0.65;
+                if (this.y > waterLevel) {
+                    // 创建涟漪
+                    ripples.push(new Ripple(this.x, waterLevel));
+                    this.reset();
+                }
+
+                // 超出边界重置
+                if (this.x < -50 || this.x > canvas.width + 50) {
+                    this.reset();
+                }
+            }
+
+            // 绘制雨滴
+            draw() {
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(147, 183, 199, ${this.opacity})`;
+                ctx.lineWidth = 1.5;
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x + wind.x * this.length * 0.5, this.y + this.length);
+                ctx.stroke();
+            }
+        }
+
+        // ========== 涟漪类 ==========
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 1;
+                this.maxRadius = CONFIG.rippleMaxRadius * (0.6 + Math.random() * 0.4);
+                this.opacity = 0.6;
+                this.speed = CONFIG.rippleExpandSpeed * (0.8 + Math.random() * 0.4);
+                this.active = true;
+            }
+
+            // 更新涟漪状态
+            update() {
+                this.radius += this.speed;
+                this.opacity = 0.6 * (1 - this.radius / this.maxRadius);
+
+                if (this.radius >= this.maxRadius) {
+                    this.active = false;
+                }
+            }
+
+            // 绘制涟漪
+            draw() {
+                if (!this.active) return;
+
+                // 外圈
+                ctx.beginPath();
+                ctx.strokeStyle = `rgba(93, 173, 226, ${this.opacity})`;
+                ctx.lineWidth = 2;
+                ctx.ellipse(this.x, this.y, this.radius, this.radius * 0.3, 0, 0, Math.PI * 2);
+                ctx.stroke();
+
+                // 内圈
+                if (this.radius > 10) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgba(133, 193, 233, ${this.opacity * 0.5})`;
+                    ctx.lineWidth = 1;
+                    ctx.ellipse(this.x, this.y, this.radius * 0.6, this.radius * 0.18, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // ========== 倒影效果 ==========
+        function drawReflection() {
+            const waterLevel = canvas.height * 0.65;
+            
+            // 水面渐变
+            const gradient = ctx.createLinearGradient(0, waterLevel, 0, canvas.height);
+            gradient.addColorStop(0, 'rgba(26, 37, 47, 0.3)');
+            gradient.addColorStop(0.5, 'rgba(44, 62, 80, 0.4)');
+            gradient.addColorStop(1, 'rgba(26, 37, 47, 0.8)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, waterLevel, canvas.width, canvas.height - waterLevel);
+
+            // 水面高光线条
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(93, 173, 226, 0.15)';
+            ctx.lineWidth = 1;
+            ctx.moveTo(0, waterLevel);
+            ctx.lineTo(canvas.width, waterLevel);
+            ctx.stroke();
+        }
+
+        // ========== 背景氛围 ==========
+        function drawAtmosphere() {
+            // 顶部雾气
+            const topFog = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.3);
+            topFog.addColorStop(0, 'rgba(44, 62, 80, 0.4)');
+            topFog.addColorStop(1, 'rgba(44, 62, 80, 0)');
+            ctx.fillStyle = topFog;
+            ctx.fillRect(0, 0, canvas.width, canvas.height * 0.3);
+
+            // 底部深色
+            const bottomShadow = ctx.createLinearGradient(0, canvas.height * 0.7, 0, canvas.height);
+            bottomShadow.addColorStop(0, 'rgba(26, 37, 47, 0)');
+            bottomShadow.addColorStop(1, 'rgba(15, 22, 28, 0.6)');
+            ctx.fillStyle = bottomShadow;
+            ctx.fillRect(0, canvas.height * 0.7, canvas.width, canvas.height * 0.3);
+        }
+
+        // ========== 初始化 ==========
+        const raindrops = [];
+        const ripples = [];
+
+        // 创建初始雨滴
+        for (let i = 0; i < CONFIG.rainCount; i++) {
+            const drop = new Raindrop();
+            drop.y = Math.random() * canvas.height; // 分散初始位置
+            raindrops.push(drop);
+        }
+
+        // ========== 点击交互 - 创造雨滴 ==========
+        canvas.addEventListener('click', (e) => {
+            // 在点击位置创建多个雨滴
+            for (let i = 0; i < 5; i++) {
+                const drop = new Raindrop(true, e.clientX + (Math.random() - 0.5) * 30, e.clientY);
+                raindrops.push(drop);
+            }
+            // 同时创建涟漪
+            ripples.push(new Ripple(e.clientX, canvas.height * 0.65));
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            for (let i = 0; i < 5; i++) {
+                const drop = new Raindrop(true, touch.clientX + (Math.random() - 0.5) * 30, touch.clientY);
+                raindrops.push(drop);
+            }
+            ripples.push(new Ripple(touch.clientX, canvas.height * 0.65));
+        });
+
+        // ========== 主动画循环 ==========
+        function animate() {
+            // 清除画布
+            ctx.fillStyle = CONFIG.colors.background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制背景氛围
+            drawAtmosphere();
+
+            // 平滑过渡风向
+            wind.x += (targetWind.x - wind.x) * 0.02;
+            wind.y += (targetWind.y - wind.y) * 0.02;
+
+            // 更新并绘制雨滴
+            for (let i = raindrops.length - 1; i >= 0; i--) {
+                raindrops[i].update();
+                raindrops[i].draw();
+            }
+
+            // 绘制倒影
+            drawReflection();
+
+            // 更新并绘制涟漪
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                ripples[i].update();
+                ripples[i].draw();
+                
+                // 移除已消失的涟漪
+                if (!ripples[i].active) {
+                    ripples.splice(i, 1);
+                }
+            }
+
+            // 限制雨滴数量，防止内存泄漏
+            while (raindrops.length > CONFIG.rainCount * 1.5) {
+                raindrops.shift();
+            }
+
+            // 继续动画循环
+            requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        animate();
+    </script>
+</body>
+</html>

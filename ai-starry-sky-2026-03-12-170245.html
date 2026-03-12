@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星空效果 - Starry Sky</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(200, 220, 255, 0.7);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(150, 180, 255, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(200, 220, 255, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(100, 150, 255, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(150, 180, 255, 0.3);
+        }
+        
+        .constellation-name {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(200, 220, 255, 0);
+            font-size: 24px;
+            letter-spacing: 5px;
+            z-index: 100;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+            text-shadow: 0 0 20px rgba(150, 180, 255, 0.8);
+        }
+        
+        .constellation-name.show {
+            color: rgba(200, 220, 255, 0.9);
+        }
+        
+        .fps {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(200, 220, 255, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="stars"></canvas>
+    
+    <div class="constellation-name" id="constellationName"></div>
+    
+    <div class="controls">
+        <div id="stars-count">星星: 0</div>
+        <div id="shooting">流星: 0</div>
+    </div>
+    
+    <div class="info">
+        <span>⭐ 点击创建星座 | 拖动绘制连线 | 滚轮缩放 | 双击触发流星雨 | 右键切换星空模式</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            STAR_COUNT: 500,
+            NEBULA_COUNT: 5,
+            MAX_SHOOTING_STARS: 10,
+            CONSTELLATION_STARS: 7
+        };
+
+        // 星空模式
+        const skyModes = [
+            { name: '静谧夜空', starDensity: 1, nebulaOpacity: 0.3, twinkleSpeed: 1 },
+            { name: '银河之夜', starDensity: 2, nebulaOpacity: 0.5, twinkleSpeed: 1.2 },
+            { name: '极光星空', starDensity: 1.5, nebulaOpacity: 0.7, twinkleSpeed: 0.8 },
+            { name: '深空探索', starDensity: 3, nebulaOpacity: 0.4, twinkleSpeed: 1.5 }
+        ];
+
+        // 星云颜色
+        const nebulaColors = [
+            ['rgba(100, 50, 150, 0.15)', 'rgba(150, 80, 200, 0.1)'],
+            ['rgba(50, 100, 150, 0.15)', 'rgba(80, 150, 200, 0.1)'],
+            ['rgba(150, 50, 100, 0.15)', 'rgba(200, 80, 150, 0.1)'],
+            ['rgba(50, 150, 100, 0.15)', 'rgba(80, 200, 150, 0.1)'],
+            ['rgba(150, 100, 50, 0.15)', 'rgba(200, 150, 80, 0.1)']
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('stars');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let stars = [];
+        let shootingStars = [];
+        let nebulae = [];
+        let constellations = [];
+        let currentConstellation = [];
+        
+        let currentMode = 0;
+        let zoom = 1;
+        let offsetX = 0, offsetY = 0;
+        
+        let isDragging = false;
+        let dragStartX = 0, dragStartY = 0;
+        let lastOffsetX = 0, lastOffsetY = 0;
+        let time = 0;
+
+        // 星星类
+        class Star {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width * 2 - width / 2;
+                this.y = Math.random() * height * 2 - height / 2;
+                this.z = Math.random() * 1000;
+                
+                this.baseSize = Math.random() * 2 + 0.5;
+                this.brightness = Math.random();
+                this.twinkleSpeed = Math.random() * 0.1 + 0.02;
+                this.twinklePhase = Math.random() * Math.PI * 2;
+                
+                // 星星颜色
+                const colorType = Math.random();
+                if (colorType < 0.7) {
+                    this.color = [255, 255, 255]; // 白色
+                } else if (colorType < 0.85) {
+                    this.color = [255, 200, 150]; // 暖黄
+                } else {
+                    this.color = [150, 200, 255]; // 冷蓝
+                }
+            }
+
+            update(time, mode) {
+                const twinkle = Math.sin(time * this.twinkleSpeed * mode.twinkleSpeed + this.twinklePhase);
+                this.currentBrightness = this.brightness * (0.7 + twinkle * 0.3);
+            }
+
+            draw(ctx, zoom, offsetX, offsetY) {
+                const scale = 1000 / (this.z + 1);
+                const screenX = (this.x + offsetX) * scale * zoom + width / 2;
+                const screenY = (this.y + offsetY) * scale * zoom + height / 2;
+                
+                if (screenX < -10 || screenX > width + 10 || screenY < -10 || screenY > height + 10) return;
+                
+                const size = this.baseSize * scale * zoom * this.currentBrightness;
+                
+                // 发光效果
+                const gradient = ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, size * 4);
+                gradient.addColorStop(0, `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${this.currentBrightness})`);
+                gradient.addColorStop(0.5, `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${this.currentBrightness * 0.3})`);
+                gradient.addColorStop(1, `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, size * 4, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 核心
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.currentBrightness})`;
+                ctx.fill();
+                
+                return { x: screenX, y: screenY, size };
+            }
+        }
+
+        // 流星类
+        class ShootingStar {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = -10;
+                this.length = Math.random() * 100 + 50;
+                this.speed = Math.random() * 15 + 10;
+                this.angle = Math.PI / 4 + (Math.random() - 0.5) * 0.3;
+                this.alpha = 1;
+                this.active = true;
+            }
+
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                this.alpha -= 0.01;
+                
+                if (this.y > height + 50 || this.x > width + 50 || this.alpha <= 0) {
+                    this.active = false;
+                }
+            }
+
+            draw(ctx) {
+                const tailX = this.x - Math.cos(this.angle) * this.length;
+                const tailY = this.y - Math.sin(this.angle) * this.length;
+                
+                const gradient = ctx.createLinearGradient(tailX, tailY, this.x, this.y);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+                gradient.addColorStop(0.7, `rgba(255, 255, 255, ${this.alpha * 0.5})`);
+                gradient.addColorStop(1, `rgba(255, 255, 255, ${this.alpha})`);
+                
+                ctx.beginPath();
+                ctx.moveTo(tailX, tailY);
+                ctx.lineTo(this.x, this.y);
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // 头部发光
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#fff';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 星云类
+        class Nebula {
+            constructor(index) {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.radius = Math.random() * 200 + 100;
+                this.colors = nebulaColors[index % nebulaColors.length];
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.001;
+            }
+
+            update() {
+                this.rotation += this.rotationSpeed;
+            }
+
+            draw(ctx, opacity) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.radius);
+                gradient.addColorStop(0, this.colors[0].replace('0.15', (0.15 * opacity).toString()));
+                gradient.addColorStop(0.5, this.colors[1].replace('0.1', (0.1 * opacity).toString()));
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                
+                ctx.beginPath();
+                ctx.ellipse(0, 0, this.radius, this.radius * 0.6, 0, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+
+        // 星座类
+        class Constellation {
+            constructor(stars) {
+                this.stars = stars;
+                this.alpha = 0;
+                this.targetAlpha = 1;
+            }
+
+            update() {
+                this.alpha += (this.targetAlpha - this.alpha) * 0.05;
+            }
+
+            draw(ctx) {
+                if (this.stars.length < 2) return;
+                
+                // 连线
+                ctx.beginPath();
+                ctx.moveTo(this.stars[0].x, this.stars[0].y);
+                for (let i = 1; i < this.stars.length; i++) {
+                    ctx.lineTo(this.stars[i].x, this.stars[i].y);
+                }
+                ctx.strokeStyle = `rgba(150, 180, 255, ${this.alpha * 0.5})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // 星星节点
+                this.stars.forEach(star => {
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(200, 220, 255, ${this.alpha})`;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = 'rgba(150, 180, 255, 0.8)';
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+            }
+        }
+
+        // 初始化
+        function init() {
+            resize();
+            
+            const mode = skyModes[currentMode];
+            
+            stars = [];
+            for (let i = 0; i < CONFIG.STAR_COUNT * mode.starDensity; i++) {
+                stars.push(new Star());
+            }
+            
+            nebulae = [];
+            for (let i = 0; i < CONFIG.NEBULA_COUNT; i++) {
+                nebulae.push(new Nebula(i));
+            }
+            
+            shootingStars = [];
+            
+            document.getElementById('stars-count').textContent = `星星: ${stars.length}`;
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // 绘制背景
+        function drawBackground() {
+            const gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, Math.max(width, height));
+            gradient.addColorStop(0, '#0a0a15');
+            gradient.addColorStop(0.5, '#050510');
+            gradient.addColorStop(1, '#000005');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+
+        // 触发流星雨
+        function triggerMeteorShower() {
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    if (shootingStars.length < CONFIG.MAX_SHOOTING_STARS) {
+                        shootingStars.push(new ShootingStar());
+                    }
+                }, i * 200);
+            }
+            document.getElementById('shooting').textContent = `流星: ${shootingStars.length}`;
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            time++;
+            
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            const mode = skyModes[currentMode];
+            
+            // 绘制背景
+            drawBackground();
+            
+            // 绘制星云
+            nebulae.forEach(nebula => {
+                nebula.update();
+                nebula.draw(ctx, mode.nebulaOpacity);
+            });
+            
+            // 更新和绘制星星
+            stars.forEach(star => {
+                star.update(time, mode);
+                star.draw(ctx, zoom, offsetX, offsetY);
+            });
+            
+            // 绘制星座
+            constellations.forEach(constellation => {
+                constellation.update();
+                constellation.draw(ctx);
+            });
+            
+            // 绘制当前正在创建的星座
+            if (currentConstellation.length > 0) {
+                ctx.beginPath();
+                ctx.moveTo(currentConstellation[0].x, currentConstellation[0].y);
+                for (let i = 1; i < currentConstellation.length; i++) {
+                    ctx.lineTo(currentConstellation[i].x, currentConstellation[i].y);
+                }
+                ctx.strokeStyle = 'rgba(150, 180, 255, 0.8)';
+                ctx.lineWidth = 1;
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+            
+            // 更新和绘制流星
+            shootingStars = shootingStars.filter(star => {
+                star.update();
+                if (star.active) {
+                    star.draw(ctx);
+                    return true;
+                }
+                return false;
+            });
+            document.getElementById('shooting').textContent = `流星: ${shootingStars.length}`;
+            
+            // 随机产生流星
+            if (Math.random() < 0.002) {
+                if (shootingStars.length < CONFIG.MAX_SHOOTING_STARS) {
+                    shootingStars.push(new ShootingStar());
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                lastOffsetX = offsetX;
+                lastOffsetY = offsetY;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                offsetX = lastOffsetX + (e.clientX - dragStartX) / zoom;
+                offsetY = lastOffsetY + (e.clientY - dragStartY) / zoom;
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                const moved = Math.abs(e.clientX - dragStartX) > 5 || Math.abs(e.clientY - dragStartY) > 5;
+                
+                if (!moved) {
+                    // 点击添加星座点
+                    currentConstellation.push({ x: e.clientX, y: e.clientY });
+                    
+                    if (currentConstellation.length >= CONFIG.CONSTELLATION_STARS) {
+                        constellations.push(new Constellation([...currentConstellation]));
+                        currentConstellation = [];
+                        
+                        // 显示星座名称
+                        const names = ['北斗', '猎户', '天蝎', '狮子', '天琴', '天鹅', '仙女'];
+                        const nameEl = document.getElementById('constellationName');
+                        nameEl.textContent = names[Math.floor(Math.random() * names.length)];
+                        nameEl.classList.add('show');
+                        setTimeout(() => nameEl.classList.remove('show'), 2000);
+                    }
+                }
+            }
+            isDragging = false;
+        });
+
+        canvas.addEventListener('dblclick', triggerMeteorShower);
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            zoom = Math.max(0.5, Math.min(3, zoom - Math.sign(e.deltaY) * 0.1));
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentMode = (currentMode + 1) % skyModes.length;
+            init();
+        });
+
+        // 触摸支持
+        let touchStartDist = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                isDragging = true;
+                dragStartX = e.touches[0].clientX;
+                dragStartY = e.touches[0].clientY;
+                lastOffsetX = offsetX;
+                lastOffsetY = offsetY;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                touchStartDist = Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isDragging) {
+                offsetX = lastOffsetX + (e.touches[0].clientX - dragStartX) / zoom;
+                offsetY = lastOffsetY + (e.touches[0].clientY - dragStartY) / zoom;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (touchStartDist > 0) {
+                    zoom *= dist / touchStartDist;
+                    zoom = Math.max(0.5, Math.min(3, zoom));
+                }
+                touchStartDist = dist;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+            touchStartDist = 0;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                triggerMeteorShower();
+            } else if (e.code === 'KeyM') {
+                currentMode = (currentMode + 1) % skyModes.length;
+                init();
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>生命游戏 - Game of Life</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 255, 150, 0.8);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(50, 200, 100, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(100, 255, 150, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(50, 200, 100, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(100, 255, 150, 0.3);
+        }
+        
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(100, 255, 150, 0.8);
+            font-size: 14px;
+            letter-spacing: 3px;
+            z-index: 100;
+        }
+        
+        .stats {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(100, 255, 150, 0.6);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .fps {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 255, 150, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameOfLife"></canvas>
+    
+    <div class="title">GAME OF LIFE</div>
+    
+    <div class="controls">
+        <div id="generation">世代: 0</div>
+        <div id="speed">速度: 10</div>
+        <div id="pattern">图案: 随机</div>
+    </div>
+    
+    <div class="stats">
+        <div>存活: <span id="alive">0</span></div>
+        <div>死亡: <span id="dead">0</span></div>
+    </div>
+    
+    <div class="info">
+        <span>🧬 点击绘制细胞 | 拖动绘制轨迹 | 滚轮缩放 | 空格暂停/继续 | 双击清除 | 右键切换配色</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            CELL_SIZE: 10,
+            INITIAL_DENSITY: 0.3,
+            UPDATE_INTERVAL: 100  // ms
+        };
+
+        // 预设图案
+        const patterns = {
+            glider: [[0,1],[1,2],[2,0],[2,1],[2,2]],
+            lwss: [[0,1],[0,4],[1,0],[2,0],[2,4],[3,0],[3,1],[3,2],[3,3]],
+            blinker: [[0,1],[1,1],[2,1]],
+            beacon: [[0,0],[0,1],[1,0],[1,1],[2,2],[2,3],[3,2],[3,3]],
+            pulsar: [
+                [2,0],[3,0],[4,0],[8,0],[9,0],[10,0],
+                [0,2],[5,2],[7,2],[12,2],
+                [0,3],[5,3],[7,3],[12,3],
+                [0,4],[5,4],[7,4],[12,4],
+                [2,5],[3,5],[4,5],[8,5],[9,5],[10,5],
+                [2,7],[3,7],[4,7],[8,7],[9,7],[10,7],
+                [0,8],[5,8],[7,8],[12,8],
+                [0,9],[5,9],[7,9],[12,9],
+                [0,10],[5,10],[7,10],[12,10],
+                [2,12],[3,12],[4,12],[8,12],[9,12],[10,12]
+            ],
+            pentadecathlon: [[0,1],[1,1],[2,0],[2,2],[3,1],[4,1],[5,1],[6,1],[7,0],[7,2],[8,1],[9,1]],
+            gosperGun: [
+                [0,4],[0,5],[1,4],[1,5],
+                [10,4],[10,5],[10,6],[11,3],[11,7],[12,2],[12,8],[13,2],[13,8],
+                [14,5],[15,3],[15,7],[16,4],[16,5],[16,6],[17,5],
+                [20,2],[20,3],[20,4],[21,2],[21,3],[21,4],[22,1],[22,5],
+                [24,0],[24,1],[24,5],[24,6],
+                [34,2],[34,3],[35,2],[35,3]
+            ]
+        };
+
+        // 配色方案
+        const colorSchemes = [
+            { name: '矩阵', alive: '#00ff88', dead: '#001a0d', glow: '#00ff88' },
+            { name: '火焰', alive: '#ff6600', dead: '#1a0a00', glow: '#ff4400' },
+            { name: '海洋', alive: '#00aaff', dead: '#001a2a', glow: '#0088ff' },
+            { name: '紫晶', alive: '#aa00ff', dead: '#1a002a', glow: '#8800ff' },
+            { name: '黄金', alive: '#ffcc00', dead: '#1a1400', glow: '#ffaa00' }
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('gameOfLife');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let cols, rows;
+        let grid, nextGrid;
+        let cellSize = CONFIG.CELL_SIZE;
+        let offsetX = 0, offsetY = 0;
+        
+        let generation = 0;
+        let aliveCount = 0;
+        let deadCount = 0;
+        let isRunning = true;
+        let speed = 10;
+        let currentScheme = 0;
+        let currentPattern = 'random';
+        
+        let isDragging = false;
+        let lastMouseX = 0, lastMouseY = 0;
+        let isDrawing = false;
+
+        // 初始化网格
+        function initGrid() {
+            grid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+            nextGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+        }
+
+        // 随机填充
+        function randomize() {
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    grid[x][y] = Math.random() < CONFIG.INITIAL_DENSITY ? 1 : 0;
+                }
+            }
+            currentPattern = '随机';
+            generation = 0;
+            updateStats();
+        }
+
+        // 清除网格
+        function clearGrid() {
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    grid[x][y] = 0;
+                }
+            }
+            generation = 0;
+            aliveCount = 0;
+            updateStats();
+        }
+
+        // 放置图案
+        function placePattern(patternName, centerX, centerY) {
+            const pattern = patterns[patternName];
+            if (!pattern) return;
+            
+            pattern.forEach(([dx, dy]) => {
+                const x = (centerX + dx) % cols;
+                const y = (centerY + dy) % rows;
+                if (x >= 0 && x < cols && y >= 0 && y < rows) {
+                    grid[x][y] = 1;
+                }
+            });
+            currentPattern = patternName;
+            document.getElementById('pattern').textContent = `图案: ${patternName}`;
+        }
+
+        // 计算邻居数量
+        function countNeighbors(x, y) {
+            let count = 0;
+            for (let dx = -1; dx <= 1; dx++) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    if (dx === 0 && dy === 0) continue;
+                    const nx = (x + dx + cols) % cols;
+                    const ny = (y + dy + rows) % rows;
+                    count += grid[nx][ny];
+                }
+            }
+            return count;
+        }
+
+        // 更新网格
+        function updateGrid() {
+            aliveCount = 0;
+            
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    const neighbors = countNeighbors(x, y);
+                    const alive = grid[x][y];
+                    
+                    if (alive) {
+                        // 规则1,3: 存活细胞有2-3个邻居则继续存活
+                        nextGrid[x][y] = (neighbors === 2 || neighbors === 3) ? 1 : 0;
+                    } else {
+                        // 规则4: 死亡细胞有恰好3个邻居则复活
+                        nextGrid[x][y] = (neighbors === 3) ? 1 : 0;
+                    }
+                    
+                    if (nextGrid[x][y]) aliveCount++;
+                }
+            }
+            
+            // 交换网格
+            [grid, nextGrid] = [nextGrid, grid];
+            generation++;
+            updateStats();
+        }
+
+        // 更新统计
+        function updateStats() {
+            document.getElementById('generation').textContent = `世代: ${generation}`;
+            document.getElementById('alive').textContent = aliveCount;
+            deadCount = cols * rows - aliveCount;
+            document.getElementById('dead').textContent = deadCount;
+        }
+
+        // 绘制网格
+        function draw() {
+            const scheme = colorSchemes[currentScheme];
+            
+            // 背景
+            ctx.fillStyle = scheme.dead;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制网格线（淡淡的）
+            ctx.strokeStyle = `rgba(255, 255, 255, 0.03)`;
+            ctx.lineWidth = 0.5;
+            
+            for (let x = 0; x <= cols; x++) {
+                ctx.beginPath();
+                ctx.moveTo(x * cellSize + offsetX, 0);
+                ctx.lineTo(x * cellSize + offsetX, height);
+                ctx.stroke();
+            }
+            
+            for (let y = 0; y <= rows; y++) {
+                ctx.beginPath();
+                ctx.moveTo(0, y * cellSize + offsetY);
+                ctx.lineTo(width, y * cellSize + offsetY);
+                ctx.stroke();
+            }
+            
+            // 绘制细胞
+            for (let x = 0; x < cols; x++) {
+                for (let y = 0; y < rows; y++) {
+                    if (grid[x][y]) {
+                        const px = x * cellSize + offsetX;
+                        const py = y * cellSize + offsetY;
+                        
+                        // 发光效果
+                        const gradient = ctx.createRadialGradient(
+                            px + cellSize / 2, py + cellSize / 2, 0,
+                            px + cellSize / 2, py + cellSize / 2, cellSize
+                        );
+                        gradient.addColorStop(0, scheme.alive);
+                        gradient.addColorStop(0.5, scheme.glow);
+                        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                        
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(px - cellSize/2, py - cellSize/2, cellSize * 2, cellSize * 2);
+                        
+                        // 核心
+                        ctx.fillStyle = scheme.alive;
+                        ctx.shadowBlur = 5;
+                        ctx.shadowColor = scheme.glow;
+                        ctx.fillRect(px + 1, py + 1, cellSize - 2, cellSize - 2);
+                        ctx.shadowBlur = 0;
+                    }
+                }
+            }
+        }
+
+        // 初始化
+        function init() {
+            resize();
+            initGrid();
+            randomize();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            cols = Math.ceil(width / cellSize);
+            rows = Math.ceil(height / cellSize);
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let lastUpdateTime = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            // 更新网格
+            if (isRunning && currentTime - lastUpdateTime >= (1000 / speed)) {
+                updateGrid();
+                lastUpdateTime = currentTime;
+            }
+            
+            // 绘制
+            draw();
+            
+            requestAnimationFrame(animate);
+        }
+
+        // 获取网格坐标
+        function getGridPos(clientX, clientY) {
+            const x = Math.floor((clientX - offsetX) / cellSize);
+            const y = Math.floor((clientY - offsetY) / cellSize);
+            return { x, y };
+        }
+
+        // 事件监听
+        window.addEventListener('resize', () => {
+            resize();
+            initGrid();
+            randomize();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                const pos = getGridPos(e.clientX, e.clientY);
+                if (pos.x >= 0 && pos.x < cols && pos.y >= 0 && pos.y < rows) {
+                    grid[pos.x][pos.y] = 1;
+                    isDrawing = true;
+                }
+                isDragging = true;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing) {
+                const pos = getGridPos(e.clientX, e.clientY);
+                if (pos.x >= 0 && pos.x < cols && pos.y >= 0 && pos.y < rows) {
+                    grid[pos.x][pos.y] = 1;
+                }
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            isDragging = false;
+            isDrawing = false;
+            updateStats();
+        });
+
+        canvas.addEventListener('dblclick', clearGrid);
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            // 缩放网格
+            const oldCellSize = cellSize;
+            cellSize = Math.max(4, Math.min(30, cellSize - Math.sign(e.deltaY) * 2));
+            
+            if (cellSize !== oldCellSize) {
+                const oldCols = cols;
+                const oldRows = rows;
+                cols = Math.ceil(width / cellSize);
+                rows = Math.ceil(height / cellSize);
+                
+                // 创建新网格并复制数据
+                const newGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+                for (let x = 0; x < Math.min(oldCols, cols); x++) {
+                    for (let y = 0; y < Math.min(oldRows, rows); y++) {
+                        if (grid[x] && grid[x][y] !== undefined) {
+                            newGrid[x][y] = grid[x][y];
+                        }
+                    }
+                }
+                grid = newGrid;
+                nextGrid = new Array(cols).fill(null).map(() => new Array(rows).fill(0));
+            }
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const pos = getGridPos(touch.clientX, touch.clientY);
+            if (pos.x >= 0 && pos.x < cols && pos.y >= 0 && pos.y < rows) {
+                grid[pos.x][pos.y] = 1;
+            }
+            isDrawing = true;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDrawing) {
+                const touch = e.touches[0];
+                const pos = getGridPos(touch.clientX, touch.clientY);
+                if (pos.x >= 0 && pos.x < cols && pos.y >= 0 && pos.y < rows) {
+                    grid[pos.x][pos.y] = 1;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDrawing = false;
+            updateStats();
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                isRunning = !isRunning;
+            } else if (e.code === 'KeyR') {
+                randomize();
+            } else if (e.code === 'KeyC') {
+                clearGrid();
+            } else if (e.code === 'ArrowUp') {
+                speed = Math.min(60, speed + 1);
+                document.getElementById('speed').textContent = `速度: ${speed}`;
+            } else if (e.code === 'ArrowDown') {
+                speed = Math.max(1, speed - 1);
+                document.getElementById('speed').textContent = `速度: ${speed}`;
+            } else if (e.code === 'Digit1') {
+                placePattern('glider', Math.floor(cols/2), Math.floor(rows/2));
+            } else if (e.code === 'Digit2') {
+                placePattern('lwss', Math.floor(cols/2), Math.floor(rows/2));
+            } else if (e.code === 'Digit3') {
+                placePattern('pulsar', Math.floor(cols/2), Math.floor(rows/2));
+            } else if (e.code === 'Digit4') {
+                placePattern('gosperGun', Math.floor(cols/2), Math.floor(rows/2));
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>彩色气泡 - Colorful Bubbles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2a 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            letter-spacing: 3px;
+            z-index: 100;
+        }
+        
+        .fps {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="bubbles"></canvas>
+    
+    <div class="title">BUBBLES</div>
+    
+    <div class="controls">
+        <div id="count">气泡: 0</div>
+        <div id="mode">模式: 漂浮</div>
+    </div>
+    
+    <div class="info">
+        <span>🫧 点击创建气泡 | 拖动产生气泡流 | 滚轮调整大小 | 双击切换模式 | 右键切换配色</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            MAX_BUBBLES: 100,
+            SPAWN_RATE: 0.02,
+            GRAVITY: -0.02,
+            FRICTION: 0.99
+        };
+
+        // 气泡模式
+        const bubbleModes = [
+            { name: '漂浮', gravity: -0.02, spawn: true },
+            { name: '下沉', gravity: 0.05, spawn: true },
+            { name: '静止', gravity: 0, spawn: false },
+            { name: '混乱', gravity: 0, spawn: true, chaos: true }
+        ];
+
+        // 配色方案
+        const colorSchemes = [
+            { name: '彩虹', colors: ['#ff0080', '#ff00ff', '#8000ff', '#0080ff', '#00ffff', '#00ff80', '#80ff00', '#ffff00', '#ff8000'] },
+            { name: '海洋', colors: ['#00ffff', '#00ccff', '#0099ff', '#0066ff', '#0033ff', '#0000ff'] },
+            { name: '火焰', colors: ['#ff0000', '#ff3300', '#ff6600', '#ff9900', '#ffcc00', '#ffff00'] },
+            { name: '森林', colors: ['#00ff00', '#00ff66', '#00ff99', '#00ffcc', '#00ccff', '#0099ff'] },
+            { name: '粉彩', colors: ['#ff99cc', '#ffccff', '#cc99ff', '#9999ff', '#99ccff', '#99ffff'] }
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('bubbles');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let bubbles = [];
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+        let currentMode = 0;
+        let currentScheme = 0;
+        let baseSize = 30;
+        let time = 0;
+
+        // 气泡类
+        class Bubble {
+            constructor(x, y, size) {
+                this.x = x || Math.random() * width;
+                this.y = y || height + 50;
+                this.size = size || (Math.random() * baseSize + 10);
+                this.baseSize = this.size;
+                
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -Math.random() * 2 - 1;
+                
+                this.wobbleSpeed = Math.random() * 0.1 + 0.05;
+                this.wobblePhase = Math.random() * Math.PI * 2;
+                this.wobbleAmount = Math.random() * 2 + 1;
+                
+                const colors = colorSchemes[currentScheme].colors;
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                this.alpha = Math.random() * 0.4 + 0.3;
+                
+                this.shimmerSpeed = Math.random() * 0.1 + 0.05;
+                this.shimmerPhase = Math.random() * Math.PI * 2;
+                
+                // 高光位置
+                this.highlightAngle = Math.random() * Math.PI * 0.5 + Math.PI * 0.75;
+            }
+
+            update(mode) {
+                // 模式相关重力
+                this.vy += mode.gravity;
+                
+                // 混乱模式
+                if (mode.chaos) {
+                    this.vx += (Math.random() - 0.5) * 0.5;
+                    this.vy += (Math.random() - 0.5) * 0.5;
+                }
+                
+                // 摩擦力
+                this.vx *= CONFIG.FRICTION;
+                this.vy *= CONFIG.FRICTION;
+                
+                // 摆动
+                const wobble = Math.sin(time * this.wobbleSpeed + this.wobblePhase) * this.wobbleAmount;
+                this.x += this.vx + wobble * 0.5;
+                this.y += this.vy;
+                
+                // 脉冲大小变化
+                const pulse = Math.sin(time * this.shimmerSpeed + this.shimmerPhase) * 0.1;
+                this.size = this.baseSize * (1 + pulse);
+                
+                // 边界检测
+                if (this.y < -this.size * 2) {
+                    this.y = height + this.size;
+                }
+                if (this.y > height + this.size * 2) {
+                    this.y = -this.size;
+                }
+                if (this.x < -this.size) this.x = width + this.size;
+                if (this.x > width + this.size) this.x = -this.size;
+            }
+
+            draw(ctx) {
+                const x = this.x;
+                const y = this.y;
+                const r = this.size;
+                
+                // 主体渐变
+                const gradient = ctx.createRadialGradient(
+                    x - r * 0.3, y - r * 0.3, 0,
+                    x, y, r
+                );
+                
+                const rgb = hexToRgb(this.color);
+                gradient.addColorStop(0, `rgba(255, 255, 255, ${this.alpha * 0.3})`);
+                gradient.addColorStop(0.3, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.alpha * 0.6})`);
+                gradient.addColorStop(0.7, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.alpha})`);
+                gradient.addColorStop(1, `rgba(${rgb.r * 0.5}, ${rgb.g * 0.5}, ${rgb.b * 0.5}, ${this.alpha * 0.8})`);
+                
+                // 绘制气泡
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 边缘
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.alpha * 0.5})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // 主高光
+                const hx = x + Math.cos(this.highlightAngle) * r * 0.4;
+                const hy = y + Math.sin(this.highlightAngle) * r * 0.4;
+                const highlightGradient = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.4);
+                highlightGradient.addColorStop(0, `rgba(255, 255, 255, ${this.alpha * 0.8})`);
+                highlightGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                
+                ctx.beginPath();
+                ctx.arc(hx, hy, r * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = highlightGradient;
+                ctx.fill();
+                
+                // 小高光
+                const hx2 = x + Math.cos(this.highlightAngle + 0.5) * r * 0.6;
+                const hy2 = y + Math.sin(this.highlightAngle + 0.5) * r * 0.6;
+                ctx.beginPath();
+                ctx.arc(hx2, hy2, r * 0.15, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha * 0.6})`;
+                ctx.fill();
+                
+                // 底部反光
+                const reflectGradient = ctx.createLinearGradient(x, y - r, x, y + r);
+                reflectGradient.addColorStop(0, 'rgba(255, 255, 255, 0)');
+                reflectGradient.addColorStop(0.7, 'rgba(255, 255, 255, 0)');
+                reflectGradient.addColorStop(0.85, `rgba(255, 255, 255, ${this.alpha * 0.2})`);
+                reflectGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                
+                ctx.beginPath();
+                ctx.arc(x, y, r * 0.9, 0, Math.PI * 2);
+                ctx.fillStyle = reflectGradient;
+                ctx.fill();
+            }
+        }
+
+        // 工具函数
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 255, g: 255, b: 255 };
+        }
+
+        // 创建气泡
+        function createBubble(x, y, size) {
+            if (bubbles.length < CONFIG.MAX_BUBBLES) {
+                bubbles.push(new Bubble(x, y, size || (Math.random() * baseSize + 10)));
+            }
+        }
+
+        // 初始化
+        function init() {
+            resize();
+            
+            // 创建初始气泡
+            for (let i = 0; i < 30; i++) {
+                const bubble = new Bubble();
+                bubble.y = Math.random() * height;
+                bubbles.push(bubble);
+            }
+            
+            updateCount();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function updateCount() {
+            document.getElementById('count').textContent = `气泡: ${bubbles.length}`;
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            time++;
+            
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            const mode = bubbleModes[currentMode];
+            
+            // 清空画布（带渐隐）
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 自动生成气泡
+            if (mode.spawn && Math.random() < CONFIG.SPAWN_RATE) {
+                createBubble();
+            }
+            
+            // 拖动时生成气泡
+            if (isMouseDown) {
+                createBubble(mouseX + (Math.random() - 0.5) * 30, mouseY + (Math.random() - 0.5) * 30);
+            }
+            
+            // 更新和绘制气泡
+            bubbles.forEach(bubble => {
+                bubble.update(mode);
+                bubble.draw(ctx);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                isMouseDown = true;
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                createBubble(mouseX, mouseY, baseSize);
+                updateCount();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            currentMode = (currentMode + 1) % bubbleModes.length;
+            document.getElementById('mode').textContent = `模式: ${bubbleModes[currentMode].name}`;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            baseSize = Math.max(10, Math.min(100, baseSize - Math.sign(e.deltaY) * 5));
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+            // 更新现有气泡颜色
+            const colors = colorSchemes[currentScheme].colors;
+            bubbles.forEach(bubble => {
+                bubble.color = colors[Math.floor(Math.random() * colors.length)];
+            });
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            isMouseDown = true;
+            createBubble(mouseX, mouseY, baseSize);
+            updateCount();
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                // 爆发多个气泡
+                for (let i = 0; i < 10; i++) {
+                    createBubble(
+                        width / 2 + (Math.random() - 0.5) * 200,
+                        height / 2 + (Math.random() - 0.5) * 200
+                    );
+                }
+                updateCount();
+            } else if (e.code === 'KeyC') {
+                currentScheme = (currentScheme + 1) % colorSchemes.length;
+            } else if (e.code === 'KeyM') {
+                currentMode = (currentMode + 1) % bubbleModes.length;
+                document.getElementById('mode').textContent = `模式: ${bubbleModes[currentMode].name}`;
+            } else if (e.code === 'KeyR') {
+                bubbles = [];
+                for (let i = 0; i < 30; i++) {
+                    const bubble = new Bubble();
+                    bubble.y = Math.random() * height;
+                    bubbles.push(bubble);
+                }
+                updateCount();
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

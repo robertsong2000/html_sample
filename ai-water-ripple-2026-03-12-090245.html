@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水波纹 - Water Ripple</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1a2e 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 200, 255, 0.7);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(100, 200, 255, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 10px;
+            background: rgba(0, 50, 100, 0.3);
+            border-radius: 15px;
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        
+        .fps {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(100, 200, 255, 0.6);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+        
+        .drop-count {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(100, 200, 255, 0.6);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="water"></canvas>
+    
+    <div class="info">
+        <span>💧 点击/拖动产生水波 | 🖱️ 双击切换模式 | 🔄 滚轮调整波纹强度</span>
+    </div>
+    
+    <div class="controls">
+        <div id="mode">模式: 交互</div>
+        <div id="intensity">强度: 50%</div>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+    <div class="drop-count">波纹: <span id="drops">0</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            RESOLUTION: 4,        // 分辨率降低因子（性能优化）
+            DAMPING: 0.97,        // 阻尼系数
+            CLIP: 5,              // 裁剪值
+            HALF_WIDTH: 3,        // 涟漪半径
+            INTENSITY_STEP: 10    // 强度调整步长
+        };
+
+        // Canvas
+        const canvas = document.getElementById('water');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let cols, rows;
+        let buffer1, buffer2;
+        let imageData;
+        
+        // 状态
+        let mouseX = 0, mouseY = 0;
+        let isMouseDown = false;
+        let autoMode = false;
+        let intensity = 512;
+        let lastAutoTime = 0;
+        
+        // 模式
+        let colorMode = 0;
+        const colorModes = [
+            { name: '深海', bg1: [10, 30, 60], bg2: [20, 50, 80], highlight: [100, 200, 255] },
+            { name: '日落', bg1: [60, 20, 30], bg2: [100, 40, 50], highlight: [255, 150, 100] },
+            { name: '极光', bg1: [10, 40, 40], bg2: [20, 60, 60], highlight: [100, 255, 200] },
+            { name: '梦幻', bg1: [40, 20, 60], bg2: [60, 30, 80], highlight: [200, 150, 255] }
+        ];
+
+        // 初始化
+        function init() {
+            resize();
+            resetBuffers();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            cols = Math.floor(width / CONFIG.RESOLUTION);
+            rows = Math.floor(height / CONFIG.RESOLUTION);
+            
+            imageData = ctx.createImageData(width, height);
+        }
+
+        function resetBuffers() {
+            const size = cols * rows;
+            buffer1 = new Float32Array(size);
+            buffer2 = new Float32Array(size);
+        }
+
+        // 产生涟漪
+        function createRipple(x, y, strength) {
+            const col = Math.floor(x / CONFIG.RESOLUTION);
+            const row = Math.floor(y / CONFIG.RESOLUTION);
+            
+            if (col < 1 || col >= cols - 1 || row < 1 || row >= rows - 1) return;
+            
+            for (let dy = -CONFIG.HALF_WIDTH; dy <= CONFIG.HALF_WIDTH; dy++) {
+                for (let dx = -CONFIG.HALF_WIDTH; dx <= CONFIG.HALF_WIDTH; dx++) {
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist <= CONFIG.HALF_WIDTH) {
+                        const idx = (row + dy) * cols + (col + dx);
+                        if (idx >= 0 && idx < buffer1.length) {
+                            const factor = 1 - dist / CONFIG.HALF_WIDTH;
+                            buffer1[idx] -= strength * factor;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 更新水波
+        function updateWater() {
+            for (let row = 1; row < rows - 1; row++) {
+                for (let col = 1; col < cols - 1; col++) {
+                    const idx = row * cols + col;
+                    
+                    // 波动方程
+                    buffer2[idx] = (
+                        buffer1[idx - 1] +
+                        buffer1[idx + 1] +
+                        buffer1[idx - cols] +
+                        buffer1[idx + cols]
+                    ) / 2 - buffer2[idx];
+                    
+                    // 阻尼
+                    buffer2[idx] *= CONFIG.DAMPING;
+                    
+                    // 裁剪
+                    if (buffer2[idx] > CONFIG.CLIP) buffer2[idx] = CONFIG.CLIP;
+                    if (buffer2[idx] < -CONFIG.CLIP) buffer2[idx] = -CONFIG.CLIP;
+                }
+            }
+            
+            // 交换缓冲区
+            const temp = buffer1;
+            buffer1 = buffer2;
+            buffer2 = temp;
+        }
+
+        // 渲染
+        function render() {
+            const mode = colorModes[colorMode];
+            const pixels = imageData.data;
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const col = Math.floor(x / CONFIG.RESOLUTION);
+                    const row = Math.floor(y / CONFIG.RESOLUTION);
+                    const idx = row * cols + col;
+                    
+                    // 计算折射
+                    let offsetX = 0, offsetY = 0;
+                    if (col > 0 && col < cols - 1 && row > 0 && row < rows - 1) {
+                        offsetX = buffer1[idx] - buffer1[idx - 1];
+                        offsetY = buffer1[idx] - buffer1[idx - cols];
+                    }
+                    
+                    // 背景渐变
+                    const t = y / height;
+                    const bgR = mode.bg1[0] + (mode.bg2[0] - mode.bg1[0]) * t;
+                    const bgG = mode.bg1[1] + (mode.bg2[1] - mode.bg1[1]) * t;
+                    const bgB = mode.bg1[2] + (mode.bg2[2] - mode.bg1[2]) * t;
+                    
+                    // 波纹高光
+                    const wave = buffer1[idx] || 0;
+                    const highlight = Math.abs(wave) / CONFIG.CLIP;
+                    
+                    const pixelIdx = (y * width + x) * 4;
+                    pixels[pixelIdx] = Math.min(255, bgR + highlight * mode.highlight[0]);
+                    pixels[pixelIdx + 1] = Math.min(255, bgG + highlight * mode.highlight[1]);
+                    pixels[pixelIdx + 2] = Math.min(255, bgB + highlight * mode.highlight[2]);
+                    pixels[pixelIdx + 3] = 255;
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // 计算活跃波纹数
+        function countActiveDrops() {
+            let count = 0;
+            for (let i = 0; i < buffer1.length; i++) {
+                if (Math.abs(buffer1[i]) > 0.1) count++;
+            }
+            return count;
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // 自动模式
+            if (autoMode && currentTime - lastAutoTime > 500) {
+                createRipple(
+                    Math.random() * width,
+                    Math.random() * height,
+                    intensity
+                );
+                lastAutoTime = currentTime;
+            }
+
+            // 鼠标拖动
+            if (isMouseDown && !autoMode) {
+                createRipple(mouseX, mouseY, intensity * 0.3);
+            }
+
+            updateWater();
+            render();
+
+            document.getElementById('drops').textContent = countActiveDrops();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        window.addEventListener('resize', () => {
+            resize();
+            resetBuffers();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            isMouseDown = true;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            createRipple(mouseX, mouseY, intensity);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isMouseDown = false;
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            autoMode = !autoMode;
+            document.getElementById('mode').textContent = `模式: ${autoMode ? '自动' : '交互'}`;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            intensity = Math.max(128, Math.min(2048, intensity - Math.sign(e.deltaY) * CONFIG.INTENSITY_STEP * 10));
+            document.getElementById('intensity').textContent = `强度: ${Math.round((intensity / 2048) * 100)}%`;
+        });
+
+        // 右键切换颜色
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            colorMode = (colorMode + 1) % colorModes.length;
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            isMouseDown = true;
+            createRipple(mouseX, mouseY, intensity);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isMouseDown = false;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                // 随机产生多个涟漪
+                for (let i = 0; i < 5; i++) {
+                    setTimeout(() => {
+                        createRipple(
+                            Math.random() * width,
+                            Math.random() * height,
+                            intensity
+                        );
+                    }, i * 100);
+                }
+            } else if (e.code === 'KeyC') {
+                colorMode = (colorMode + 1) % colorModes.length;
+            } else if (e.code === 'KeyM') {
+                autoMode = !autoMode;
+                document.getElementById('mode').textContent = `模式: ${autoMode ? '自动' : '交互'}`;
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

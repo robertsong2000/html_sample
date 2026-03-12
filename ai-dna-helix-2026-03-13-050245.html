@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNA螺旋 | DNA Helix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            text-transform: uppercase;
+            z-index: 10;
+            text-shadow: 0 0 30px rgba(0, 255, 255, 0.8),
+                         0 0 60px rgba(0, 255, 255, 0.4);
+            pointer-events: none;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 13px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            pointer-events: none;
+            line-height: 1.6;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.7);
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            z-index: 10;
+            text-align: right;
+            pointer-events: none;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 18px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 11px;
+                bottom: 10px;
+                left: 10px;
+            }
+            .stats {
+                font-size: 10px;
+                top: 60px;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">DNA Helix</div>
+    <canvas id="dna"></canvas>
+    <div class="stats">
+        <div id="particleCount">Particles: 0</div>
+        <div id="fps">FPS: 60</div>
+    </div>
+    <div class="info">
+        移动鼠标控制旋转速度<br>
+        点击产生基因突变效果
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('dna');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let lastTime = performance.now();
+        let fps = 60;
+        let particles = [];
+        let mutations = [];
+        
+        // DNA链配置
+        const helixConfig = {
+            strands: 2,
+            basePairs: 30,
+            radius: 150,
+            verticalSpacing: 25,
+            rotationSpeed: 0.02,
+            color1: { r: 0, g: 255, b: 255 },    // 青色
+            color2: { r: 255, g: 100, b: 255 },   // 粉色
+            connectionColor: { r: 255, g: 255, b: 255 }
+        };
+        
+        // 碱基对粒子
+        class BasePair {
+            constructor(index, total) {
+                this.index = index;
+                this.total = total;
+                this.y = 0;
+                this.angle1 = 0;
+                this.angle2 = Math.PI;
+                this.size = 8;
+                this.glowSize = 20;
+                this.pulse = Math.random() * Math.PI * 2;
+            }
+            
+            update(centerY, rotation, speedMultiplier) {
+                const baseAngle = (this.index / this.total) * Math.PI * 4 + rotation;
+                this.angle1 = baseAngle;
+                this.angle2 = baseAngle + Math.PI;
+                this.y = centerY + (this.index - this.total / 2) * helixConfig.verticalSpacing;
+                this.pulse += 0.05 * speedMultiplier;
+            }
+            
+            draw(x1, y1, x2, y2, isMutated) {
+                const pulseFactor = 1 + Math.sin(this.pulse) * 0.2;
+                const size = this.size * pulseFactor;
+                
+                // 发光效果
+                const glowSize = this.glowSize * pulseFactor;
+                
+                // 第一个碱基
+                this.drawNucleotide(x1, y1, size, glowSize, helixConfig.color1, isMutated);
+                
+                // 第二个碱基
+                this.drawNucleotide(x2, y2, size, glowSize, helixConfig.color2, isMutated);
+                
+                // 连接线（氢键）
+                this.drawConnection(x1, y1, x2, y2, isMutated);
+            }
+            
+            drawNucleotide(x, y, size, glowSize, color, isMutated) {
+                // 外发光
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, glowSize);
+                const mutatedColor = isMutated ? { r: 255, g: 255, b: 0 } : color;
+                gradient.addColorStop(0, `rgba(${mutatedColor.r}, ${mutatedColor.g}, ${mutatedColor.b}, 0.8)`);
+                gradient.addColorStop(0.5, `rgba(${mutatedColor.r}, ${mutatedColor.g}, ${mutatedColor.b}, 0.3)`);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(x, y, glowSize, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 核心
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${mutatedColor.r}, ${mutatedColor.g}, ${mutatedColor.b}, 1)`;
+                ctx.fill();
+                
+                // 高光
+                ctx.beginPath();
+                ctx.arc(x - size * 0.3, y - size * 0.3, size * 0.4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.fill();
+            }
+            
+            drawConnection(x1, y1, x2, y2, isMutated) {
+                const segments = 5;
+                const color = isMutated ? 'rgba(255, 255, 0, 0.6)' : 'rgba(255, 255, 255, 0.4)';
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                
+                for (let i = 1; i <= segments; i++) {
+                    const t = i / segments;
+                    const x = x1 + (x2 - x1) * t;
+                    const y = y1 + (y2 - y1) * t;
+                    const wave = Math.sin(t * Math.PI) * 10 * Math.sin(time * 0.05);
+                    ctx.lineTo(x + wave, y);
+                }
+                
+                ctx.strokeStyle = color;
+                ctx.lineWidth = isMutated ? 3 : 2;
+                ctx.stroke();
+            }
+        }
+        
+        // 基因突变效果
+        class Mutation {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.particles = [];
+                this.time = 0;
+                this.maxTime = 100;
+                
+                // 创建突变粒子
+                for (let i = 0; i < 30; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 2 + Math.random() * 6;
+                    this.particles.push({
+                        x: 0,
+                        y: 0,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        size: 3 + Math.random() * 5,
+                        color: Math.random() > 0.5 ? helixConfig.color1 : helixConfig.color2,
+                        life: 1
+                    });
+                }
+            }
+            
+            update() {
+                this.time++;
+                
+                this.particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vy += 0.1;
+                    p.vx *= 0.98;
+                    p.vy *= 0.98;
+                    p.life = 1 - (this.time / this.maxTime);
+                });
+                
+                return this.time < this.maxTime;
+            }
+            
+            draw() {
+                this.particles.forEach(p => {
+                    const gradient = ctx.createRadialGradient(
+                        this.x + p.x, this.y + p.y, 0,
+                        this.x + p.x, this.y + p.y, p.size * 3
+                    );
+                    gradient.addColorStop(0, `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.life})`);
+                    gradient.addColorStop(1, 'transparent');
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.x + p.x, this.y + p.y, p.size * 3, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.x + p.x, this.y + p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${p.color.r}, ${p.color.g}, ${p.color.b}, ${p.life})`;
+                    ctx.fill();
+                });
+            }
+        }
+        
+        // 背景粒子
+        class BackgroundParticle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = (Math.random() - 0.5) * 0.5;
+                this.alpha = Math.random() * 0.5 + 0.2;
+                this.pulse = Math.random() * Math.PI * 2;
+            }
+            
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.pulse += 0.02;
+                
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                const alpha = this.alpha * (1 + Math.sin(this.pulse) * 0.3);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100, 200, 255, ${alpha})`;
+                ctx.fill();
+            }
+        }
+        
+        let basePairs = [];
+        let bgParticles = [];
+        
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            // 初始化碱基对
+            basePairs = [];
+            for (let i = 0; i < helixConfig.basePairs; i++) {
+                basePairs.push(new BasePair(i, helixConfig.basePairs));
+            }
+            
+            // 初始化背景粒子
+            bgParticles = [];
+            const particleCount = Math.min(100, Math.floor(width * height / 10000));
+            for (let i = 0; i < particleCount; i++) {
+                bgParticles.push(new BackgroundParticle());
+            }
+        }
+        
+        function drawHelix() {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const rotation = time * helixConfig.rotationSpeed;
+            
+            // 根据鼠标位置调整旋转速度
+            const speedMultiplier = 1 + (mouseX - width / 2) / width;
+            const radiusScale = 1 + (mouseY - height / 2) / height * 0.3;
+            const radius = helixConfig.radius * radiusScale;
+            
+            // 3D排序（基于深度）
+            const sortedPairs = basePairs.map((pair, index) => {
+                const angle = pair.angle1 + rotation;
+                const z = Math.cos(angle);
+                return { pair, z, index };
+            }).sort((a, b) => a.z - b.z);
+            
+            // 绘制排序后的碱基对
+            sortedPairs.forEach(({ pair }) => {
+                pair.update(centerY, rotation, speedMultiplier);
+                
+                const x1 = centerX + Math.cos(pair.angle1 + rotation) * radius;
+                const x2 = centerX + Math.cos(pair.angle2 + rotation) * radius;
+                const z1 = Math.sin(pair.angle1 + rotation);
+                const z2 = Math.sin(pair.angle2 + rotation);
+                
+                // 3D效果：根据z值调整大小和透明度
+                const scale1 = 0.5 + (z1 + 1) * 0.3;
+                const scale2 = 0.5 + (z2 + 1) * 0.3;
+                
+                // 检查是否在突变区域
+                const isMutated = mutations.some(m => {
+                    const dx = (x1 + x2) / 2 - m.x;
+                    const dy = pair.y - m.y;
+                    return Math.sqrt(dx * dx + dy * dy) < 100;
+                });
+                
+                pair.draw(x1, pair.y, x2, pair.y, isMutated);
+            });
+        }
+        
+        function updateFPS() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = Math.round(1000 / delta);
+            
+            document.getElementById('fps').textContent = `FPS: ${fps}`;
+            document.getElementById('particleCount').textContent = `Particles: ${bgParticles.length + basePairs.length * 2}`;
+        }
+        
+        function animate() {
+            time++;
+            
+            // 清除画布
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制背景粒子
+            bgParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            // 绘制DNA螺旋
+            drawHelix();
+            
+            // 更新和绘制突变效果
+            mutations = mutations.filter(m => {
+                const alive = m.update();
+                m.draw();
+                return alive;
+            });
+            
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', init);
+        
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        });
+        
+        window.addEventListener('click', (e) => {
+            mutations.push(new Mutation(e.clientX, e.clientY));
+        });
+        
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                mutations.push(new Mutation(e.touches[0].clientX, e.touches[0].clientY));
+            }
+        });
+        
+        // 初始化并开始动画
+        init();
+        mouseX = width / 2;
+        mouseY = height / 2;
+        animate();
+    </script>
+</body>
+</html>

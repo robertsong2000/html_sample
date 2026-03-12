@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分形艺术 - Fractal Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            color: #0ff;
+            font-size: 12px;
+            text-shadow: 0 0 10px #0ff;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 100;
+            text-align: center;
+        }
+        
+        .fractal-info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.8);
+            font-size: 14px;
+            z-index: 100;
+            text-align: right;
+            text-shadow: 0 0 10px #0ff;
+        }
+        
+        .fps {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fractal"></canvas>
+    
+    <div class="controls">
+        <div>迭代: <span id="iterations">0</span></div>
+        <div>缩放: <span id="zoom">1.00</span>x</div>
+    </div>
+    
+    <div class="fractal-info">
+        <div id="fractalName">Mandelbrot Set</div>
+        <div id="colorScheme">配色: 霓虹</div>
+    </div>
+    
+    <div class="info">
+        <span>🖱️ 滚轮缩放 | 点击放大 | 拖动平移 | 双击切换分形 | 右键切换配色</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 分形类型
+        const fractalTypes = [
+            { name: 'Mandelbrot Set', fn: 'mandelbrot' },
+            { name: 'Julia Set', fn: 'julia' },
+            { name: 'Burning Ship', fn: 'burningShip' },
+            { name: 'Tricorn', fn: 'tricorn' }
+        ];
+
+        // 配色方案
+        const colorSchemes = [
+            { name: '霓虹', colors: ['#000', '#001', '#003', '#00f', '#0ff', '#0f0', '#ff0', '#f00', '#f0f', '#fff'] },
+            { name: '海洋', colors: ['#000', '#001030', '#002060', '#004080', '#0060a0', '#0080c0', '#00a0e0', '#00c0ff', '#80e0ff', '#fff'] },
+            { name: '火焰', colors: ['#000', '#100', '#300', '#500', '#700', '#a00', '#d00', '#f40', '#fa0', '#ff0'] },
+            { name: '彩虹', colors: ['#000', '#00f', '#0ff', '#0f0', '#ff0', '#f00', '#f0f', '#fff'] },
+            { name: '极光', colors: ['#000', '#001', '#002', '#008', '#00f', '#08f', '#0ff', '#8ff', '#fff'] }
+        ];
+
+        let currentFractal = 0;
+        let currentScheme = 0;
+        let maxIterations = 100;
+
+        // Canvas
+        const canvas = document.getElementById('fractal');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let imageData, pixels;
+        
+        // 视图参数
+        let centerX = -0.5;
+        let centerY = 0;
+        let zoom = 1;
+        
+        // Julia参数
+        let juliaC = { re: -0.7, im: 0.27015 };
+        
+        // 鼠标状态
+        let isDragging = false;
+        let dragStartX, dragStartY;
+        let dragCenterX, dragCenterY;
+
+        // 初始化
+        function init() {
+            resize();
+            render();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            imageData = ctx.createImageData(width, height);
+            pixels = imageData.data;
+        }
+
+        // 获取颜色
+        function getColor(iterations, maxIter) {
+            if (iterations === maxIter) return [0, 0, 0];
+            
+            const scheme = colorSchemes[currentScheme].colors;
+            const t = iterations / maxIter;
+            const idx = t * (scheme.length - 1);
+            const i1 = Math.floor(idx);
+            const i2 = Math.min(i1 + 1, scheme.length - 1);
+            const f = idx - i1;
+            
+            const c1 = hexToRgb(scheme[i1]);
+            const c2 = hexToRgb(scheme[i2]);
+            
+            return [
+                Math.floor(c1.r + (c2.r - c1.r) * f),
+                Math.floor(c1.g + (c2.g - c1.g) * f),
+                Math.floor(c1.b + (c2.b - c1.b) * f)
+            ];
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+
+        // 分形计算
+        function mandelbrot(x0, y0, maxIter) {
+            let x = 0, y = 0;
+            let iteration = 0;
+            
+            while (x * x + y * y <= 4 && iteration < maxIter) {
+                const xTemp = x * x - y * y + x0;
+                y = 2 * x * y + y0;
+                x = xTemp;
+                iteration++;
+            }
+            
+            // 平滑着色
+            if (iteration < maxIter) {
+                const logZn = Math.log(x * x + y * y) / 2;
+                const nu = Math.log(logZn / Math.log(2)) / Math.log(2);
+                iteration = iteration + 1 - nu;
+            }
+            
+            return iteration;
+        }
+
+        function julia(x0, y0, maxIter) {
+            let x = x0, y = y0;
+            let iteration = 0;
+            
+            while (x * x + y * y <= 4 && iteration < maxIter) {
+                const xTemp = x * x - y * y + juliaC.re;
+                y = 2 * x * y + juliaC.im;
+                x = xTemp;
+                iteration++;
+            }
+            
+            if (iteration < maxIter) {
+                const logZn = Math.log(x * x + y * y) / 2;
+                const nu = Math.log(logZn / Math.log(2)) / Math.log(2);
+                iteration = iteration + 1 - nu;
+            }
+            
+            return iteration;
+        }
+
+        function burningShip(x0, y0, maxIter) {
+            let x = 0, y = 0;
+            let iteration = 0;
+            
+            while (x * x + y * y <= 4 && iteration < maxIter) {
+                const xTemp = x * x - y * y + x0;
+                y = Math.abs(2 * x * y) + y0;
+                x = Math.abs(xTemp);
+                iteration++;
+            }
+            
+            return iteration;
+        }
+
+        function tricorn(x0, y0, maxIter) {
+            let x = 0, y = 0;
+            let iteration = 0;
+            
+            while (x * x + y * y <= 4 && iteration < maxIter) {
+                const xTemp = x * x - y * y + x0;
+                y = -2 * x * y + y0;
+                x = xTemp;
+                iteration++;
+            }
+            
+            return iteration;
+        }
+
+        // 渲染分形
+        function render() {
+            const aspectRatio = width / height;
+            const scale = 3 / zoom;
+            
+            const fractalFn = fractalTypes[currentFractal].fn;
+            const calcFn = eval(fractalFn);
+            
+            // 根据缩放调整迭代次数
+            const dynamicIterations = Math.min(500, Math.floor(maxIterations + Math.log(zoom) * 20));
+            document.getElementById('iterations').textContent = dynamicIterations;
+            document.getElementById('zoom').textContent = zoom.toFixed(2);
+            document.getElementById('fractalName').textContent = fractalTypes[currentFractal].name;
+            document.getElementById('colorScheme').textContent = '配色: ' + colorSchemes[currentScheme].name;
+            
+            for (let py = 0; py < height; py++) {
+                for (let px = 0; px < width; px++) {
+                    const x0 = centerX + (px - width / 2) / width * scale * aspectRatio;
+                    const y0 = centerY + (py - height / 2) / height * scale;
+                    
+                    const iterations = calcFn(x0, y0, dynamicIterations);
+                    const color = getColor(iterations, dynamicIterations);
+                    
+                    const idx = (py * width + px) * 4;
+                    pixels[idx] = color[0];
+                    pixels[idx + 1] = color[1];
+                    pixels[idx + 2] = color[2];
+                    pixels[idx + 3] = 255;
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // 鼠标事件
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left;
+            const my = e.clientY - rect.top;
+            
+            const aspectRatio = width / height;
+            const scale = 3 / zoom;
+            
+            // 鼠标位置的复平面坐标
+            const mouseXComplex = centerX + (mx - width / 2) / width * scale * aspectRatio;
+            const mouseYComplex = centerY + (my - height / 2) / height * scale;
+            
+            // 缩放
+            const zoomFactor = e.deltaY > 0 ? 0.8 : 1.25;
+            zoom *= zoomFactor;
+            
+            // 重新计算中心点以保持鼠标位置不变
+            const newScale = 3 / zoom;
+            centerX = mouseXComplex - (mx - width / 2) / width * newScale * aspectRatio;
+            centerY = mouseYComplex - (my - height / 2) / height * newScale;
+            
+            render();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                dragCenterX = centerX;
+                dragCenterY = centerY;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const dx = e.clientX - dragStartX;
+                const dy = e.clientY - dragStartY;
+                
+                const scale = 3 / zoom;
+                const aspectRatio = width / height;
+                
+                centerX = dragCenterX - dx / width * scale * aspectRatio;
+                centerY = dragCenterY - dy / height * scale;
+                
+                render();
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0 && !isDragging) {
+                // 点击放大
+                const rect = canvas.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                
+                const aspectRatio = width / height;
+                const scale = 3 / zoom;
+                
+                centerX = centerX + (mx - width / 2) / width * scale * aspectRatio * 0.5;
+                centerY = centerY + (my - height / 2) / height * scale * 0.5;
+                zoom *= 2;
+                
+                render();
+            }
+            isDragging = false;
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            currentFractal = (currentFractal + 1) % fractalTypes.length;
+            zoom = 1;
+            centerX = fractalTypes[currentFractal].fn === 'julia' ? 0 : -0.5;
+            centerY = 0;
+            render();
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+            render();
+        });
+
+        // 触摸支持
+        let lastTouchDist = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                isDragging = true;
+                dragStartX = e.touches[0].clientX;
+                dragStartY = e.touches[0].clientY;
+                dragCenterX = centerX;
+                dragCenterY = centerY;
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastTouchDist = Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isDragging) {
+                const dx = e.touches[0].clientX - dragStartX;
+                const dy = e.touches[0].clientY - dragStartY;
+                
+                const scale = 3 / zoom;
+                const aspectRatio = width / height;
+                
+                centerX = dragCenterX - dx / width * scale * aspectRatio;
+                centerY = dragCenterY - dy / height * scale;
+                
+                render();
+            } else if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (lastTouchDist > 0) {
+                    zoom *= dist / lastTouchDist;
+                    render();
+                }
+                lastTouchDist = dist;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+            lastTouchDist = 0;
+        });
+
+        // 窗口调整
+        window.addEventListener('resize', () => {
+            resize();
+            render();
+        });
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        function updateFPS() {
+            frameCount++;
+            const now = performance.now();
+            if (now - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = now;
+            }
+            requestAnimationFrame(updateFPS);
+        }
+
+        // 启动
+        init();
+        updateFPS();
+    </script>
+</body>
+</html>

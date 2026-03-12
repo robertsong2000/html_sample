@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>霓虹网格 - Neon Grid</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 255, 0.8);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(0, 255, 255, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+        }
+        
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(0, 255, 255, 0.8);
+            font-size: 14px;
+            letter-spacing: 5px;
+            z-index: 100;
+        }
+        
+        .fps {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="neonGrid"></canvas>
+    
+    <div class="title">NEON GRID</div>
+    
+    <div class="controls">
+        <div id="mode">模式: 波动</div>
+        <div id="density">密度: 20</div>
+    </div>
+    
+    <div class="info">
+        <span>💠 移动鼠标扰动网格 | 点击产生脉冲 | 滚轮调整密度 | 双击切换模式 | 右键切换配色</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            MIN_SPACING: 15,
+            MAX_SPACING: 50,
+            PULSE_SPEED: 0.1,
+            WAVE_SPEED: 0.05
+        };
+
+        // 网格模式
+        const gridModes = [
+            { name: '波动', type: 'wave' },
+            { name: '呼吸', type: 'breathe' },
+            { name: '脉冲', type: 'pulse' },
+            { name: '噪声', type: 'noise' },
+            { name: '扫描', type: 'scan' }
+        ];
+
+        // 配色方案
+        const colorSchemes = [
+            { name: '青色', primary: '#00ffff', secondary: '#0088ff', bg: '#000810' },
+            { name: '粉色', primary: '#ff00ff', secondary: '#ff0088', bg: '#100010' },
+            { name: '绿色', primary: '#00ff00', secondary: '#00ff88', bg: '#001000' },
+            { name: '金色', primary: '#ffcc00', secondary: '#ff8800', bg: '#100800' },
+            { name: '多彩', primary: '#ff00ff', secondary: '#00ffff', bg: '#000000' }
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('neonGrid');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let spacing = 30;
+        let mouseX = 0, mouseY = 0;
+        let currentMode = 0;
+        let currentScheme = 0;
+        let time = 0;
+        let pulses = [];
+
+        // 脉冲类
+        class Pulse {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = Math.max(width, height);
+                this.speed = 10;
+                this.alpha = 1;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - this.radius / this.maxRadius;
+                return this.radius < this.maxRadius;
+            }
+
+            draw(ctx, scheme) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = scheme.primary;
+                ctx.globalAlpha = this.alpha * 0.5;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = scheme.primary;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            }
+
+            getInfluence(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (Math.abs(dist - this.radius) < 50) {
+                    return Math.sin((dist - this.radius) * 0.1) * 20 * this.alpha;
+                }
+                return 0;
+            }
+        }
+
+        // 获取网格点偏移
+        function getOffset(x, y, mode, scheme) {
+            let offsetX = 0, offsetY = 0;
+            const distToMouse = Math.sqrt((x - mouseX) ** 2 + (y - mouseY) ** 2);
+            
+            switch (mode.type) {
+                case 'wave':
+                    offsetX = Math.sin(x * 0.02 + time * CONFIG.WAVE_SPEED) * 10;
+                    offsetY = Math.cos(y * 0.02 + time * CONFIG.WAVE_SPEED) * 10;
+                    break;
+                    
+                case 'breathe':
+                    const scale = Math.sin(time * 0.03) * 0.2 + 1;
+                    offsetX = (x - width / 2) * (scale - 1) * 0.1;
+                    offsetY = (y - height / 2) * (scale - 1) * 0.1;
+                    break;
+                    
+                case 'pulse':
+                    const pulseWave = Math.sin(distToMouse * 0.05 - time * CONFIG.PULSE_SPEED) * 10;
+                    if (distToMouse > 0) {
+                        offsetX = (x - mouseX) / distToMouse * pulseWave;
+                        offsetY = (y - mouseY) / distToMouse * pulseWave;
+                    }
+                    break;
+                    
+                case 'noise':
+                    offsetX = Math.sin(x * 0.01 + y * 0.01 + time * 0.02) * 15;
+                    offsetY = Math.cos(x * 0.01 - y * 0.01 + time * 0.02) * 15;
+                    break;
+                    
+                case 'scan':
+                    const scanLine = (time * 5) % (width + 200) - 100;
+                    const distToScan = Math.abs(x - scanLine);
+                    if (distToScan < 100) {
+                        const influence = (100 - distToScan) / 100;
+                        offsetY = Math.sin(influence * Math.PI) * 30;
+                    }
+                    break;
+            }
+            
+            // 脉冲影响
+            pulses.forEach(pulse => {
+                const influence = pulse.getInfluence(x, y);
+                if (distToMouse > 0) {
+                    offsetX += (x - pulse.x) / distToMouse * influence * 0.1;
+                    offsetY += (y - pulse.y) / distToMouse * influence * 0.1;
+                }
+            });
+            
+            // 鼠标影响
+            if (distToMouse < 150 && distToMouse > 0) {
+                const influence = (150 - distToMouse) / 150;
+                offsetX += (x - mouseX) / distToMouse * influence * 20;
+                offsetY += (y - mouseY) / distToMouse * influence * 20;
+            }
+            
+            return { offsetX, offsetY };
+        }
+
+        // 绘制网格
+        function drawGrid() {
+            const mode = gridModes[currentMode];
+            const scheme = colorSchemes[currentScheme];
+            
+            // 背景
+            ctx.fillStyle = scheme.bg;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 计算网格点
+            const points = [];
+            for (let x = 0; x <= width + spacing; x += spacing) {
+                for (let y = 0; y <= height + spacing; y += spacing) {
+                    const { offsetX, offsetY } = getOffset(x, y, mode, scheme);
+                    points.push({
+                        x: x + offsetX,
+                        y: y + offsetY,
+                        baseX: x,
+                        baseY: y
+                    });
+                }
+            }
+            
+            // 绘制连线
+            const cols = Math.ceil(width / spacing) + 1;
+            const rows = Math.ceil(height / spacing) + 1;
+            
+            ctx.strokeStyle = scheme.secondary;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.3;
+            ctx.shadowBlur = 5;
+            ctx.shadowColor = scheme.secondary;
+            
+            // 水平线
+            for (let row = 0; row < rows; row++) {
+                ctx.beginPath();
+                for (let col = 0; col < cols; col++) {
+                    const idx = row * cols + col;
+                    if (idx < points.length) {
+                        if (col === 0) {
+                            ctx.moveTo(points[idx].x, points[idx].y);
+                        } else {
+                            ctx.lineTo(points[idx].x, points[idx].y);
+                        }
+                    }
+                }
+                ctx.stroke();
+            }
+            
+            // 垂直线
+            for (let col = 0; col < cols; col++) {
+                ctx.beginPath();
+                for (let row = 0; row < rows; row++) {
+                    const idx = row * cols + col;
+                    if (idx < points.length) {
+                        if (row === 0) {
+                            ctx.moveTo(points[idx].x, points[idx].y);
+                        } else {
+                            ctx.lineTo(points[idx].x, points[idx].y);
+                        }
+                    }
+                }
+                ctx.stroke();
+            }
+            
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+            
+            // 绘制交点
+            points.forEach(point => {
+                const distToMouse = Math.sqrt((point.x - mouseX) ** 2 + (point.y - mouseY) ** 2);
+                const alpha = Math.max(0.3, 1 - distToMouse / 300);
+                const size = Math.max(1, 3 - distToMouse / 200);
+                
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = scheme.primary;
+                ctx.globalAlpha = alpha;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = scheme.primary;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+            });
+            
+            // 绘制脉冲
+            pulses.forEach(pulse => pulse.draw(ctx, scheme));
+        }
+
+        // 初始化
+        function init() {
+            resize();
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            time++;
+            
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // 更新脉冲
+            pulses = pulses.filter(pulse => pulse.update());
+            
+            // 绘制网格
+            drawGrid();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            pulses.push(new Pulse(e.clientX, e.clientY));
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            currentMode = (currentMode + 1) % gridModes.length;
+            document.getElementById('mode').textContent = `模式: ${gridModes[currentMode].name}`;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            spacing = Math.max(CONFIG.MIN_SPACING, Math.min(CONFIG.MAX_SPACING, spacing - Math.sign(e.deltaY) * 5));
+            document.getElementById('density').textContent = `密度: ${Math.round(100 / spacing)}`;
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            pulses.push(new Pulse(mouseX, mouseY));
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                currentMode = (currentMode + 1) % gridModes.length;
+                document.getElementById('mode').textContent = `模式: ${gridModes[currentMode].name}`;
+            } else if (e.code === 'KeyC') {
+                currentScheme = (currentScheme + 1) % colorSchemes.length;
+            } else if (e.code === 'ArrowUp') {
+                spacing = Math.max(CONFIG.MIN_SPACING, spacing - 5);
+                document.getElementById('density').textContent = `密度: ${Math.round(100 / spacing)}`;
+            } else if (e.code === 'ArrowDown') {
+                spacing = Math.min(CONFIG.MAX_SPACING, spacing + 5);
+                document.getElementById('density').textContent = `密度: ${Math.round(100 / spacing)}`;
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

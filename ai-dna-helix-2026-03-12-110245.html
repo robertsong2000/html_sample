@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNA螺旋 - DNA Helix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0a1a2e 100%);
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 255, 200, 0.7);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(100, 255, 200, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(100, 255, 200, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(100, 255, 200, 0.3);
+        }
+        
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(100, 255, 200, 0.8);
+            font-size: 14px;
+            z-index: 100;
+            letter-spacing: 3px;
+        }
+        
+        .fps {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(100, 255, 200, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="dna"></canvas>
+    
+    <div class="title">DNA HELIX</div>
+    
+    <div class="controls">
+        <div id="mode">模式: 旋转</div>
+        <div id="speed">速度: 1.0x</div>
+    </div>
+    
+    <div class="info">
+        <span>🧬 移动鼠标扭曲螺旋 | 点击切换碱基颜色 | 滚轮调整速度 | 双击切换模式</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            STRANDS: 2,
+            BASES_PER_TURN: 10,
+            TURNS: 4,
+            RADIUS: 80,
+            VERTICAL_SPACING: 25,
+            PARTICLE_COUNT: 50
+        };
+
+        // 碱基颜色
+        const baseColors = {
+            A: { color: '#ff6b6b', name: '腺嘌呤' },
+            T: { color: '#4ecdc4', name: '胸腺嘧啶' },
+            G: { color: '#45b7d1', name: '鸟嘌呤' },
+            C: { color: '#96ceb4', name: '胞嘧啶' }
+        };
+
+        const basePairs = [['A', 'T'], ['G', 'C']];
+
+        // Canvas
+        const canvas = document.getElementById('dna');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        let time = 0;
+        let mouseX = 0, mouseY = 0;
+        let speed = 1;
+        let mode = 'rotate'; // rotate, wave, pulse
+        let particles = [];
+        
+        // DNA数据
+        let dnaPoints = [];
+
+        // 粒子类
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.z = Math.random() * 200 - 100;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.vz = (Math.random() - 0.5) * 0.3;
+                this.size = Math.random() * 2 + 1;
+                this.alpha = Math.random() * 0.5 + 0.2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.z += this.vz;
+
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+                if (this.z < -100 || this.z > 100) this.vz *= -1;
+            }
+
+            draw(ctx) {
+                const scale = (this.z + 150) / 250;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * scale, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100, 255, 200, ${this.alpha * scale})`;
+                ctx.fill();
+            }
+        }
+
+        // 生成DNA序列
+        function generateDNA() {
+            dnaPoints = [];
+            const totalBases = CONFIG.BASES_PER_TURN * CONFIG.TURNS;
+            
+            for (let i = 0; i < totalBases; i++) {
+                const pair = basePairs[Math.floor(Math.random() * basePairs.length)];
+                const y = (i - totalBases / 2) * CONFIG.VERTICAL_SPACING;
+                const angle = (i / CONFIG.BASES_PER_TURN) * Math.PI * 2;
+                
+                dnaPoints.push({
+                    strand1: {
+                        base: pair[0],
+                        angle: angle,
+                        y: y
+                    },
+                    strand2: {
+                        base: pair[1],
+                        angle: angle + Math.PI,
+                        y: y
+                    },
+                    index: i
+                });
+            }
+        }
+
+        // 获取3D点
+        function get3DPoint(angle, y, rotation, twist) {
+            const x = Math.cos(angle + rotation + twist) * CONFIG.RADIUS;
+            const z = Math.sin(angle + rotation + twist) * CONFIG.RADIUS;
+            return { x, y, z };
+        }
+
+        // 投影3D到2D
+        function project(x, y, z) {
+            const perspective = 500;
+            const scale = perspective / (perspective + z);
+            return {
+                x: centerX + x * scale,
+                y: centerY + y * scale,
+                scale: scale,
+                z: z
+            };
+        }
+
+        // 初始化
+        function init() {
+            resize();
+            generateDNA();
+            
+            particles = [];
+            for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
+                particles.push(new Particle());
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        // 绘制DNA
+        function drawDNA() {
+            const rotation = time * 0.02 * speed;
+            
+            // 鼠标影响
+            const mouseTwist = ((mouseX - centerX) / width) * 0.5;
+            const mouseWave = ((mouseY - centerY) / height) * 50;
+            
+            let prevPoints1 = [];
+            let prevPoints2 = [];
+            
+            // 按z深度排序
+            const sortedPoints = dnaPoints.map((point, idx) => {
+                let twist = 0;
+                let yOffset = 0;
+                
+                if (mode === 'wave') {
+                    yOffset = Math.sin(point.index * 0.3 + time * 0.05) * 30;
+                } else if (mode === 'pulse') {
+                    const pulseFactor = Math.sin(time * 0.03) * 0.3 + 1;
+                    twist = point.index * 0.1 * (pulseFactor - 1);
+                }
+                
+                const p1 = get3DPoint(point.strand1.angle, point.strand1.y + yOffset + mouseWave, rotation, mouseTwist);
+                const p2 = get3DPoint(point.strand2.angle, point.strand2.y + yOffset + mouseWave, rotation, mouseTwist);
+                
+                return { point, p1, p2, idx };
+            }).sort((a, b) => (a.p1.z + a.p2.z) - (b.p1.z + b.p2.z));
+
+            // 绘制连接线（碱基对）
+            sortedPoints.forEach(({ point, p1, p2 }) => {
+                const proj1 = project(p1.x, p1.y, p1.z);
+                const proj2 = project(p2.x, p2.y, p2.z);
+                
+                const gradient = ctx.createLinearGradient(proj1.x, proj1.y, proj2.x, proj2.y);
+                const color1 = baseColors[point.strand1.base].color;
+                const color2 = baseColors[point.strand2.base].color;
+                
+                gradient.addColorStop(0, color1);
+                gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.3)');
+                gradient.addColorStop(1, color2);
+                
+                ctx.beginPath();
+                ctx.moveTo(proj1.x, proj1.y);
+                ctx.lineTo(proj2.x, proj2.y);
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2 * ((proj1.scale + proj2.scale) / 2);
+                ctx.globalAlpha = 0.6;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            });
+
+            // 绘制主链
+            const drawStrand = (strandIdx) => {
+                const strandPoints = sortedPoints.map(({ point, p1, p2 }) => ({
+                    p: strandIdx === 0 ? p1 : p2,
+                    base: strandIdx === 0 ? point.strand1.base : point.strand2.base
+                })).sort((a, b) => a.p.z - b.p.z);
+
+                // 绘制连接曲线
+                for (let i = 1; i < strandPoints.length; i++) {
+                    const prev = strandPoints[i - 1];
+                    const curr = strandPoints[i];
+                    
+                    const prevProj = project(prev.p.x, prev.p.y, prev.p.z);
+                    const currProj = project(curr.p.x, curr.p.y, curr.p.z);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(prevProj.x, prevProj.y);
+                    ctx.lineTo(currProj.x, currProj.y);
+                    ctx.strokeStyle = `rgba(100, 255, 200, ${0.3 + (prevProj.scale + currProj.scale) / 4})`;
+                    ctx.lineWidth = 3 * ((prevProj.scale + currProj.scale) / 2);
+                    ctx.stroke();
+                }
+
+                // 绘制节点
+                strandPoints.forEach(({ p, base }) => {
+                    const proj = project(p.x, p.y, p.z);
+                    const color = baseColors[base].color;
+                    
+                    // 外圈发光
+                    ctx.beginPath();
+                    ctx.arc(proj.x, proj.y, 12 * proj.scale, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 0.2 * proj.scale;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = color;
+                    ctx.fill();
+                    
+                    // 内圈
+                    ctx.beginPath();
+                    ctx.arc(proj.x, proj.y, 6 * proj.scale, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 0.8;
+                    ctx.fill();
+                    
+                    // 中心亮点
+                    ctx.beginPath();
+                    ctx.arc(proj.x, proj.y, 2 * proj.scale, 0, Math.PI * 2);
+                    ctx.fillStyle = '#fff';
+                    ctx.globalAlpha = 1;
+                    ctx.fill();
+                    
+                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = 1;
+                });
+            };
+
+            drawStrand(0);
+            drawStrand(1);
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            time++;
+            
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // 清空画布
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+
+            // 更新和绘制粒子
+            particles.forEach(p => {
+                p.update();
+                p.draw(ctx);
+            });
+
+            // 绘制DNA
+            drawDNA();
+
+            requestAnimationFrame(animate);
+        }
+
+        // 切换模式
+        function toggleMode() {
+            const modes = ['rotate', 'wave', 'pulse'];
+            const currentIdx = modes.indexOf(mode);
+            mode = modes[(currentIdx + 1) % modes.length];
+            
+            const modeNames = { rotate: '旋转', wave: '波浪', pulse: '脉冲' };
+            document.getElementById('mode').textContent = `模式: ${modeNames[mode]}`;
+        }
+
+        // 随机改变碱基颜色
+        function randomizeBases() {
+            const bases = Object.keys(baseColors);
+            bases.forEach(base => {
+                const hue = Math.random() * 360;
+                baseColors[base].color = `hsl(${hue}, 70%, 60%)`;
+            });
+            generateDNA();
+        }
+
+        // 事件监听
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', randomizeBases);
+
+        canvas.addEventListener('dblclick', toggleMode);
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            speed = Math.max(0.1, Math.min(3, speed - Math.sign(e.deltaY) * 0.1));
+            document.getElementById('speed').textContent = `速度: ${speed.toFixed(1)}x`;
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                toggleMode();
+            } else if (e.code === 'KeyR') {
+                generateDNA();
+            } else if (e.code === 'KeyC') {
+                randomizeBases();
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>城市天际线 - City Skyline</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #0a0a1a;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 200, 100, 0.7);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 200, 100, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 200, 100, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(255, 200, 100, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 200, 100, 0.3);
+        }
+        
+        .time-display {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            z-index: 100;
+        }
+        
+        .fps {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 200, 100, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="city"></canvas>
+    
+    <div class="time-display">
+        <div id="time">00:00</div>
+        <div id="weather">晴朗</div>
+    </div>
+    
+    <div class="controls">
+        <div id="timeMode">时间: 自动</div>
+        <div id="buildingCount">建筑: 0</div>
+    </div>
+    
+    <div class="info">
+        <span>🌃 点击添加建筑 | 拖动移动视角 | 滚轮缩放 | 双击切换昼夜 | 右键切换天气</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            BUILDING_MIN_WIDTH: 30,
+            BUILDING_MAX_WIDTH: 80,
+            BUILDING_MIN_HEIGHT: 100,
+            BUILDING_MAX_HEIGHT: 400,
+            STAR_COUNT: 150,
+            WINDOW_SIZE: 8,
+            WINDOW_GAP: 12
+        };
+
+        // 天气类型
+        const weatherTypes = [
+            { name: '晴朗', stars: true, clouds: 0, rain: false },
+            { name: '多云', stars: false, clouds: 5, rain: false },
+            { name: '雨天', stars: false, clouds: 8, rain: true }
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('city');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let buildings = [];
+        let stars = [];
+        let clouds = [];
+        let raindrops = [];
+        let cars = [];
+        
+        let timeOfDay = 0; // 0-1, 0=midnight, 0.5=noon
+        let autoTime = true;
+        let currentWeather = 0;
+        let weather = weatherTypes[0];
+        
+        let cameraX = 0;
+        let scale = 1;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartCameraX = 0;
+
+        // 建筑类
+        class Building {
+            constructor(x, customHeight) {
+                this.x = x;
+                this.width = CONFIG.BUILDING_MIN_WIDTH + Math.random() * (CONFIG.BUILDING_MAX_WIDTH - CONFIG.BUILDING_MIN_WIDTH);
+                this.height = customHeight || CONFIG.BUILDING_MIN_HEIGHT + Math.random() * (CONFIG.BUILDING_MAX_HEIGHT - CONFIG.BUILDING_MIN_HEIGHT);
+                this.style = Math.floor(Math.random() * 4); // 不同建筑风格
+                this.windows = [];
+                this.hasAntenna = Math.random() > 0.7;
+                this.antennaHeight = 20 + Math.random() * 30;
+                this.roofStyle = Math.floor(Math.random() * 3); // 屋顶样式
+                
+                // 生成窗户
+                this.generateWindows();
+            }
+
+            generateWindows() {
+                const cols = Math.floor((this.width - 10) / CONFIG.WINDOW_GAP);
+                const rows = Math.floor((this.height - 20) / CONFIG.WINDOW_GAP);
+                
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        this.windows.push({
+                            x: 5 + col * CONFIG.WINDOW_GAP,
+                            y: 10 + row * CONFIG.WINDOW_GAP,
+                            lit: Math.random() > 0.3,
+                            flickerSpeed: Math.random() * 0.1,
+                            flickerPhase: Math.random() * Math.PI * 2
+                        });
+                    }
+                }
+            }
+
+            draw(ctx, time, timeOfDay) {
+                const screenX = (this.x - cameraX) * scale;
+                
+                // 建筑主体
+                const brightness = Math.max(0.2, Math.sin(timeOfDay * Math.PI));
+                
+                // 建筑颜色
+                const baseColor = this.style === 0 ? [60, 70, 80] :
+                                 this.style === 1 ? [50, 60, 75] :
+                                 this.style === 2 ? [55, 55, 65] : [65, 60, 70];
+                
+                ctx.fillStyle = `rgb(${baseColor[0] * brightness}, ${baseColor[1] * brightness}, ${baseColor[2] * brightness})`;
+                ctx.fillRect(screenX, height - this.height, this.width * scale, this.height * scale);
+                
+                // 屋顶
+                ctx.fillStyle = `rgb(${baseColor[0] * brightness * 0.8}, ${baseColor[1] * brightness * 0.8}, ${baseColor[2] * brightness * 0.8})`;
+                if (this.roofStyle === 0) {
+                    // 平顶
+                    ctx.fillRect(screenX, height - this.height - 5, this.width * scale, 5);
+                } else if (this.roofStyle === 1) {
+                    // 尖顶
+                    ctx.beginPath();
+                    ctx.moveTo(screenX, height - this.height);
+                    ctx.lineTo(screenX + this.width * scale / 2, height - this.height - 30);
+                    ctx.lineTo(screenX + this.width * scale, height - this.height);
+                    ctx.fill();
+                } else {
+                    // 阶梯顶
+                    ctx.fillRect(screenX + this.width * scale * 0.2, height - this.height - 15, this.width * scale * 0.6, 15);
+                }
+                
+                // 窗户
+                const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
+                this.windows.forEach(win => {
+                    const winX = screenX + win.x * scale;
+                    const winY = height - this.height + win.y * scale;
+                    
+                    if (isNight && win.lit) {
+                        // 夜晚亮灯的窗户
+                        const flicker = Math.sin(time * win.flickerSpeed + win.flickerPhase) * 0.1 + 0.9;
+                        const warmth = Math.random();
+                        const r = 255 * flicker;
+                        const g = (200 + warmth * 55) * flicker;
+                        const b = (100 + warmth * 100) * flicker;
+                        
+                        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, 0.9)`;
+                        ctx.shadowBlur = 5;
+                        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.5)`;
+                    } else {
+                        ctx.fillStyle = `rgba(100, 150, 200, ${brightness * 0.5})`;
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    ctx.fillRect(winX, winY, CONFIG.WINDOW_SIZE * scale, CONFIG.WINDOW_SIZE * scale);
+                    ctx.shadowBlur = 0;
+                });
+                
+                // 天线
+                if (this.hasAntenna) {
+                    ctx.strokeStyle = `rgba(100, 100, 100, ${brightness})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(screenX + this.width * scale / 2, height - this.height);
+                    ctx.lineTo(screenX + this.width * scale / 2, height - this.height - this.antennaHeight);
+                    ctx.stroke();
+                    
+                    // 闪烁的红灯
+                    if (Math.sin(time * 0.1) > 0) {
+                        ctx.beginPath();
+                        ctx.arc(screenX + this.width * scale / 2, height - this.height - this.antennaHeight, 3, 0, Math.PI * 2);
+                        ctx.fillStyle = '#ff0000';
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#ff0000';
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                }
+            }
+        }
+
+        // 星星类
+        class Star {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height * 0.5;
+                this.size = Math.random() * 2 + 0.5;
+                this.twinkleSpeed = Math.random() * 0.1 + 0.02;
+                this.twinklePhase = Math.random() * Math.PI * 2;
+            }
+
+            draw(ctx, time, visibility) {
+                const twinkle = Math.sin(time * this.twinkleSpeed + this.twinklePhase) * 0.3 + 0.7;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${visibility * twinkle})`;
+                ctx.fill();
+            }
+        }
+
+        // 云类
+        class Cloud {
+            constructor() {
+                this.x = Math.random() * width * 2 - width;
+                this.y = Math.random() * height * 0.3 + 50;
+                this.speed = Math.random() * 0.3 + 0.1;
+                this.size = Math.random() * 100 + 50;
+                this.puffs = Math.floor(Math.random() * 4) + 3;
+            }
+
+            update() {
+                this.x += this.speed;
+                if (this.x > width + this.size) {
+                    this.x = -this.size;
+                }
+            }
+
+            draw(ctx, timeOfDay) {
+                const brightness = Math.max(0.3, Math.sin(timeOfDay * Math.PI));
+                ctx.fillStyle = `rgba(${200 * brightness}, ${200 * brightness}, ${220 * brightness}, 0.7)`;
+                
+                for (let i = 0; i < this.puffs; i++) {
+                    const px = this.x + i * this.size * 0.4;
+                    const py = this.y + Math.sin(i) * 10;
+                    const ps = this.size * (0.5 + Math.random() * 0.3);
+                    
+                    ctx.beginPath();
+                    ctx.arc(px, py, ps, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+
+        // 雨滴类
+        class Raindrop {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * -height;
+                this.speed = Math.random() * 10 + 15;
+                this.length = Math.random() * 15 + 10;
+            }
+
+            update() {
+                this.y += this.speed;
+                if (this.y > height) {
+                    this.reset();
+                }
+            }
+
+            draw(ctx) {
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x, this.y + this.length);
+                ctx.strokeStyle = 'rgba(150, 180, 255, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+
+        // 汽车类
+        class Car {
+            constructor() {
+                this.x = Math.random() * width * 2 - width;
+                this.y = height - 20;
+                this.speed = (Math.random() * 2 + 1) * (Math.random() > 0.5 ? 1 : -1);
+                this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+                this.width = 30;
+                this.height = 15;
+            }
+
+            update() {
+                this.x += this.speed;
+                if (this.speed > 0 && this.x > width + 50) {
+                    this.x = -50;
+                } else if (this.speed < 0 && this.x < -50) {
+                    this.x = width + 50;
+                }
+            }
+
+            draw(ctx, timeOfDay) {
+                const screenX = (this.x - cameraX) * scale;
+                
+                // 车身
+                ctx.fillStyle = this.color;
+                ctx.fillRect(screenX, this.y, this.width * scale, this.height * scale);
+                
+                // 车灯
+                const isNight = timeOfDay < 0.25 || timeOfDay > 0.75;
+                if (isNight) {
+                    const lightX = this.speed > 0 ? screenX + this.width * scale : screenX;
+                    ctx.beginPath();
+                    ctx.arc(lightX, this.y + this.height * scale / 2, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = this.speed > 0 ? '#ffff00' : '#ff0000';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = ctx.fillStyle;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+
+        // 初始化
+        function init() {
+            resize();
+            
+            // 生成建筑
+            generateBuildings();
+            
+            // 生成星星
+            for (let i = 0; i < CONFIG.STAR_COUNT; i++) {
+                stars.push(new Star());
+            }
+            
+            // 生成云
+            for (let i = 0; i < weather.clouds; i++) {
+                clouds.push(new Cloud());
+            }
+            
+            // 生成汽车
+            for (let i = 0; i < 5; i++) {
+                cars.push(new Car());
+            }
+            
+            updateWeatherEffects();
+        }
+
+        function generateBuildings() {
+            buildings = [];
+            let x = 0;
+            while (x < width * 2) {
+                const building = new Building(x);
+                buildings.push(building);
+                x += building.width + Math.random() * 20;
+            }
+            document.getElementById('buildingCount').textContent = `建筑: ${buildings.length}`;
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function updateWeatherEffects() {
+            weather = weatherTypes[currentWeather];
+            
+            // 更新云
+            clouds = [];
+            for (let i = 0; i < weather.clouds; i++) {
+                clouds.push(new Cloud());
+            }
+            
+            // 更新雨
+            raindrops = [];
+            if (weather.rain) {
+                for (let i = 0; i < 100; i++) {
+                    raindrops.push(new Raindrop());
+                }
+            }
+            
+            document.getElementById('weather').textContent = weather.name;
+        }
+
+        // 绘制天空
+        function drawSky(timeOfDay) {
+            // 天空渐变
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            
+            if (timeOfDay < 0.25) {
+                // 深夜
+                gradient.addColorStop(0, '#0a0a1a');
+                gradient.addColorStop(1, '#1a1a2e');
+            } else if (timeOfDay < 0.35) {
+                // 黎明
+                gradient.addColorStop(0, '#1a1a2e');
+                gradient.addColorStop(0.5, '#4a3050');
+                gradient.addColorStop(1, '#ff6b4a');
+            } else if (timeOfDay < 0.65) {
+                // 白天
+                gradient.addColorStop(0, '#4a90c2');
+                gradient.addColorStop(1, '#87ceeb');
+            } else if (timeOfDay < 0.75) {
+                // 黄昏
+                gradient.addColorStop(0, '#2a1a3a');
+                gradient.addColorStop(0.5, '#ff6b4a');
+                gradient.addColorStop(1, '#ffaa33');
+            } else {
+                // 夜晚
+                gradient.addColorStop(0, '#0a0a1a');
+                gradient.addColorStop(1, '#1a1a2e');
+            }
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 太阳/月亮
+            const celestialY = height * 0.2 + Math.sin(timeOfDay * Math.PI) * height * 0.3;
+            const celestialX = width * 0.8;
+            
+            if (timeOfDay > 0.3 && timeOfDay < 0.7) {
+                // 太阳
+                ctx.beginPath();
+                ctx.arc(celestialX, celestialY, 40, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffdd00';
+                ctx.shadowBlur = 50;
+                ctx.shadowColor = '#ffdd00';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            } else if (timeOfDay < 0.25 || timeOfDay > 0.75) {
+                // 月亮
+                ctx.beginPath();
+                ctx.arc(celestialX, celestialY, 30, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffee';
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = '#ffffee';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // 绘制地面
+        function drawGround() {
+            ctx.fillStyle = '#1a1a2a';
+            ctx.fillRect(0, height - 30, width, 30);
+            
+            // 道路
+            ctx.fillStyle = '#2a2a3a';
+            ctx.fillRect(0, height - 25, width, 25);
+            
+            // 道路标线
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([20, 20]);
+            ctx.beginPath();
+            ctx.moveTo(0, height - 12);
+            ctx.lineTo(width, height - 12);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let animTime = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            animTime++;
+            
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // 自动时间
+            if (autoTime) {
+                timeOfDay = (timeOfDay + 0.0002) % 1;
+            }
+            
+            // 更新时间显示
+            const hours = Math.floor(timeOfDay * 24);
+            const minutes = Math.floor((timeOfDay * 24 - hours) * 60);
+            document.getElementById('time').textContent = 
+                `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+
+            // 绘制天空
+            drawSky(timeOfDay);
+            
+            // 绘制星星
+            const starVisibility = weather.stars ? Math.max(0, 1 - Math.sin(timeOfDay * Math.PI) * 1.5) : 0;
+            if (starVisibility > 0) {
+                stars.forEach(star => star.draw(ctx, animTime, starVisibility));
+            }
+            
+            // 绘制云
+            clouds.forEach(cloud => {
+                cloud.update();
+                cloud.draw(ctx, timeOfDay);
+            });
+            
+            // 绘制雨
+            raindrops.forEach(drop => {
+                drop.update();
+                drop.draw(ctx);
+            });
+            
+            // 绘制建筑
+            buildings.forEach(building => building.draw(ctx, animTime, timeOfDay));
+            
+            // 绘制地面
+            drawGround();
+            
+            // 绘制汽车
+            cars.forEach(car => {
+                car.update();
+                car.draw(ctx, timeOfDay);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        window.addEventListener('resize', () => {
+            resize();
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartCameraX = cameraX;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                cameraX = dragStartCameraX - (e.clientX - dragStartX) / scale;
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0 && !isDragging) {
+                // 点击添加建筑
+                const worldX = cameraX + e.clientX / scale;
+                const newBuilding = new Building(worldX, Math.random() * 200 + 150);
+                buildings.push(newBuilding);
+                buildings.sort((a, b) => a.x - b.x);
+                document.getElementById('buildingCount').textContent = `建筑: ${buildings.length}`;
+            }
+            isDragging = false;
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            autoTime = !autoTime;
+            document.getElementById('timeMode').textContent = `时间: ${autoTime ? '自动' : '手动'}`;
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            scale = Math.max(0.5, Math.min(2, scale - Math.sign(e.deltaY) * 0.1));
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentWeather = (currentWeather + 1) % weatherTypes.length;
+            updateWeatherEffects();
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            dragStartX = e.touches[0].clientX;
+            dragStartCameraX = cameraX;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                cameraX = dragStartCameraX - (e.touches[0].clientX - dragStartX) / scale;
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                autoTime = !autoTime;
+                document.getElementById('timeMode').textContent = `时间: ${autoTime ? '自动' : '手动'}`;
+            } else if (e.code === 'KeyW') {
+                currentWeather = (currentWeather + 1) % weatherTypes.length;
+                updateWeatherEffects();
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

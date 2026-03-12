@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>螺旋线 - Spirals</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 200, 100, 0.8);
+            font-size: 13px;
+            z-index: 100;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(255, 150, 50, 0.5);
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 200, 100, 0.8);
+            font-size: 12px;
+            z-index: 100;
+            text-align: right;
+        }
+        
+        .controls div {
+            margin: 5px 0;
+            padding: 5px 12px;
+            background: rgba(255, 150, 50, 0.1);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 200, 100, 0.3);
+        }
+        
+        .title {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(255, 200, 100, 0.8);
+            font-size: 14px;
+            letter-spacing: 5px;
+            z-index: 100;
+        }
+        
+        .fps {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            color: rgba(255, 200, 100, 0.5);
+            font-size: 12px;
+            font-family: monospace;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="spirals"></canvas>
+    
+    <div class="title">SPIRALS</div>
+    
+    <div class="controls">
+        <div id="spirals-count">螺旋: 5</div>
+        <div id="mode">模式: 阿基米德</div>
+    </div>
+    
+    <div class="info">
+        <span>🌀 移动鼠标扭曲螺旋 | 点击添加螺旋 | 滚轮调整速度 | 双击切换类型 | 右键切换配色</span>
+    </div>
+    
+    <div class="fps">FPS: <span id="fps">60</span></div>
+
+    <script>
+        // 配置
+        const CONFIG = {
+            MAX_SPIRALS: 10,
+            POINTS_PER_SPIRAL: 500
+        };
+
+        // 螺旋类型
+        const spiralTypes = [
+            { name: '阿基米德', fn: (t, a, b) => ({ r: a + b * t, theta: t }) },
+            { name: '对数', fn: (t, a, b) => ({ r: a * Math.exp(b * t), theta: t }) },
+            { name: '费马', fn: (t, a) => ({ r: a * Math.sqrt(t), theta: t }) },
+            { name: '双曲', fn: (t, a) => ({ r: a / t, theta: t }) },
+            { name: '玫瑰', fn: (t, a, n) => ({ r: a * Math.cos(n * t), theta: t }) }
+        ];
+
+        // 配色方案
+        const colorSchemes = [
+            { name: '日落', colors: ['#ff6b35', '#ff8c42', '#ffd166', '#ef476f', '#118ab2'] },
+            { name: '极光', colors: ['#00ff88', '#00ccff', '#ff00ff', '#ffff00', '#ff6600'] },
+            { name: '海洋', colors: ['#0077b6', '#00b4d8', '#90e0ef', '#caf0f8', '#03045e'] },
+            { name: '森林', colors: ['#2d6a4f', '#40916c', '#52b788', '#74c69d', '#95d5b2'] },
+            { name: '星云', colors: ['#7400b8', '#6930c3', '#5e60ce', '#5390d9', '#4ea8de'] }
+        ];
+
+        // Canvas
+        const canvas = document.getElementById('spirals');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        let spirals = [];
+        let mouseX = 0, mouseY = 0;
+        let currentType = 0;
+        let currentScheme = 0;
+        let speed = 0.02;
+        let time = 0;
+
+        // 螺旋类
+        class Spiral {
+            constructor(x, y, typeIndex) {
+                this.x = x;
+                this.y = y;
+                this.type = typeIndex;
+                this.rotation = 0;
+                this.scale = 1;
+                this.colorIndex = Math.floor(Math.random() * colorSchemes[currentScheme].colors.length);
+                this.params = this.generateParams();
+                this.points = [];
+                this.generatePoints();
+            }
+
+            generateParams() {
+                const type = spiralTypes[this.type];
+                switch (type.name) {
+                    case '阿基米德':
+                        return { a: 0, b: 0.5 + Math.random() * 1.5 };
+                    case '对数':
+                        return { a: 0.5, b: 0.05 + Math.random() * 0.1 };
+                    case '费马':
+                        return { a: 5 + Math.random() * 10 };
+                    case '双曲':
+                        return { a: 50 + Math.random() * 100 };
+                    case '玫瑰':
+                        return { a: 100 + Math.random() * 50, n: Math.floor(Math.random() * 6) + 2 };
+                    default:
+                        return { a: 1, b: 0.1 };
+                }
+            }
+
+            generatePoints() {
+                this.points = [];
+                const type = spiralTypes[this.type];
+                const maxT = this.type === 3 ? 10 : (this.type === 4 ? Math.PI * 8 : Math.PI * 10);
+                
+                for (let i = 0; i < CONFIG.POINTS_PER_SPIRAL; i++) {
+                    const t = (i / CONFIG.POINTS_PER_SPIRAL) * maxT;
+                    let result;
+                    
+                    switch (type.name) {
+                        case '阿基米德':
+                            result = { r: this.params.a + this.params.b * t, theta: t };
+                            break;
+                        case '对数':
+                            result = { r: this.params.a * Math.exp(this.params.b * t), theta: t };
+                            break;
+                        case '费马':
+                            result = { r: this.params.a * Math.sqrt(t), theta: t };
+                            break;
+                        case '双曲':
+                            result = { r: this.params.a / (t + 0.1), theta: t };
+                            break;
+                        case '玫瑰':
+                            result = { r: Math.abs(this.params.a * Math.cos(this.params.n * t)), theta: t };
+                            break;
+                    }
+                    
+                    if (Number.isFinite(result.r) && result.r > 0) {
+                        this.points.push({
+                            r: Math.min(result.r, Math.max(width, height) * 0.5),
+                            theta: result.theta,
+                            index: i
+                        });
+                    }
+                }
+            }
+
+            update(mouseX, mouseY, centerX, centerY) {
+                this.rotation += speed;
+                
+                // 鼠标影响
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 200) {
+                    this.rotation += (200 - dist) / 200 * 0.05;
+                }
+            }
+
+            draw(ctx, time, scheme) {
+                const color = scheme.colors[this.colorIndex % scheme.colors.length];
+                
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.scale(this.scale, this.scale);
+                
+                // 绘制螺旋
+                ctx.beginPath();
+                
+                this.points.forEach((point, i) => {
+                    const x = point.r * Math.cos(point.theta);
+                    const y = point.r * Math.sin(point.theta);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                
+                // 渐变色
+                const gradient = ctx.createLinearGradient(-200, -200, 200, 200);
+                scheme.colors.forEach((c, i) => {
+                    gradient.addColorStop(i / (scheme.colors.length - 1), c);
+                });
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.8;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = color;
+                ctx.stroke();
+                
+                // 绘制发光点
+                this.points.forEach((point, i) => {
+                    if (i % 20 === 0) {
+                        const x = point.r * Math.cos(point.theta);
+                        const y = point.r * Math.sin(point.theta);
+                        const pulse = Math.sin(time * 0.1 + i * 0.1) * 0.5 + 1;
+                        
+                        ctx.beginPath();
+                        ctx.arc(x, y, 3 * pulse, 0, Math.PI * 2);
+                        ctx.fillStyle = scheme.colors[i % scheme.colors.length];
+                        ctx.globalAlpha = 0.6;
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = scheme.colors[i % scheme.colors.length];
+                        ctx.fill();
+                    }
+                });
+                
+                ctx.shadowBlur = 0;
+                ctx.globalAlpha = 1;
+                ctx.restore();
+            }
+        }
+
+        // 创建螺旋
+        function createSpiral(x, y) {
+            if (spirals.length >= CONFIG.MAX_SPIRALS) {
+                spirals.shift();
+            }
+            spirals.push(new Spiral(x || centerX, y || centerY, currentType));
+            document.getElementById('spirals-count').textContent = `螺旋: ${spirals.length}`;
+        }
+
+        // 初始化
+        function init() {
+            resize();
+            
+            spirals = [];
+            for (let i = 0; i < 5; i++) {
+                const angle = (i / 5) * Math.PI * 2;
+                const dist = 100;
+                createSpiral(
+                    centerX + Math.cos(angle) * dist,
+                    centerY + Math.sin(angle) * dist
+                );
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+
+        // FPS计算
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        // 动画循环
+        function animate(currentTime) {
+            time++;
+            
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            const scheme = colorSchemes[currentScheme];
+            
+            // 清空画布（带渐隐）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新和绘制螺旋
+            spirals.forEach(spiral => {
+                spiral.update(mouseX, mouseY, centerX, centerY);
+                spiral.draw(ctx, time, scheme);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // 事件监听
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('click', (e) => {
+            createSpiral(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('dblclick', () => {
+            currentType = (currentType + 1) % spiralTypes.length;
+            document.getElementById('mode').textContent = `模式: ${spiralTypes[currentType].name}`;
+            // 重新生成所有螺旋
+            spirals.forEach(s => {
+                s.type = currentType;
+                s.params = s.generateParams();
+                s.generatePoints();
+            });
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            speed = Math.max(0.005, Math.min(0.1, speed - Math.sign(e.deltaY) * 0.005));
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            createSpiral(mouseX, mouseY);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+
+        // 键盘支持
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                currentType = (currentType + 1) % spiralTypes.length;
+                document.getElementById('mode').textContent = `模式: ${spiralTypes[currentType].name}`;
+                spirals.forEach(s => {
+                    s.type = currentType;
+                    s.params = s.generateParams();
+                    s.generatePoints();
+                });
+            } else if (e.code === 'KeyC') {
+                currentScheme = (currentScheme + 1) % colorSchemes.length;
+            } else if (e.code === 'KeyR') {
+                init();
+            }
+        });
+
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

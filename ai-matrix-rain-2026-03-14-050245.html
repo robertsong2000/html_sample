@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矩阵雨 | Matrix Rain</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 70, 0.7);
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0, 255, 70, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 70, 0.9);
+            font-size: 28px;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 8px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 20px rgba(0, 255, 70, 0.8);
+        }
+        
+        .glitch {
+            animation: glitch 2s infinite;
+        }
+        
+        @keyframes glitch {
+            0%, 90%, 100% { 
+                text-shadow: 0 0 20px rgba(0, 255, 70, 0.8);
+                transform: translateX(-50%) translateX(0);
+            }
+            92% { 
+                text-shadow: -3px 0 red, 3px 0 cyan;
+                transform: translateX(-50%) translateX(2px);
+            }
+            94% { 
+                text-shadow: 3px 0 red, -3px 0 cyan;
+                transform: translateX(-50%) translateX(-2px);
+            }
+            96% {
+                text-shadow: 0 0 20px rgba(0, 255, 70, 0.8);
+                transform: translateX(-50%) translateX(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix"></canvas>
+    <div class="title glitch">Matrix Rain</div>
+    <div class="info">移动鼠标产生涟漪 | 点击屏幕改变颜色 | 滚轮调整速度</div>
+    
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let columns;
+        let drops = [];
+        let mouseX = -1000, mouseY = -1000;
+        let speed = 1;
+        let colorScheme = 0;
+        
+        const colorSchemes = [
+            { main: '#0F0', glow: 'rgba(0, 255, 0, 0.8)', bg: 'rgba(0, 0, 0, 0.05)' },      // 经典绿
+            { main: '#0FF', glow: 'rgba(0, 255, 255, 0.8)', bg: 'rgba(0, 0, 0, 0.05)' },    // 赛博青
+            { main: '#F0F', glow: 'rgba(255, 0, 255, 0.8)', bg: 'rgba(0, 0, 0, 0.05)' },    // 霓虹紫
+            { main: '#FF0', glow: 'rgba(255, 255, 0, 0.8)', bg: 'rgba(0, 0, 0, 0.05)' },    // 金黄
+            { main: '#F00', glow: 'rgba(255, 0, 0, 0.8)', bg: 'rgba(0, 0, 0, 0.05)' },      // 血红
+        ];
+        
+        const characters = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%^&*()';
+        const chars = characters.split('');
+        
+        // 涟漪效果
+        let ripples = [];
+        
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200;
+                this.alpha = 1;
+            }
+            
+            update() {
+                this.radius += 5;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                return this.radius < this.maxRadius;
+            }
+            
+            draw() {
+                const scheme = colorSchemes[colorScheme];
+                ctx.save();
+                ctx.strokeStyle = scheme.main;
+                ctx.globalAlpha = this.alpha * 0.5;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = scheme.glow;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        
+        // 特效字符（跟随鼠标）
+        let specialChars = [];
+        
+        class SpecialChar {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.char = chars[Math.floor(Math.random() * chars.length)];
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = Math.random() * -3 - 2;
+                this.alpha = 1;
+                this.size = Math.random() * 10 + 14;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1;
+                this.alpha -= 0.02;
+                return this.alpha > 0;
+            }
+            
+            draw() {
+                const scheme = colorSchemes[colorScheme];
+                ctx.save();
+                ctx.fillStyle = scheme.main;
+                ctx.globalAlpha = this.alpha;
+                ctx.font = `${this.size}px 'Courier New'`;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = scheme.glow;
+                ctx.fillText(this.char, this.x, this.y);
+                ctx.restore();
+            }
+        }
+        
+        function init() {
+            resize();
+            for (let i = 0; i < columns; i++) {
+                drops[i] = Math.random() * -100;
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            columns = Math.floor(width / 20);
+            
+            // 重新初始化drops数组
+            const newDrops = [];
+            for (let i = 0; i < columns; i++) {
+                newDrops[i] = drops[i] !== undefined ? drops[i] : Math.random() * -100;
+            }
+            drops = newDrops;
+        }
+        
+        function draw() {
+            const scheme = colorSchemes[colorScheme];
+            
+            // 半透明背景产生拖尾效果
+            ctx.fillStyle = scheme.bg;
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.font = '16px Courier New';
+            
+            for (let i = 0; i < drops.length; i++) {
+                const x = i * 20;
+                const y = drops[i] * 20;
+                
+                // 鼠标影响
+                const dx = x - mouseX;
+                const dy = y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                let pushForce = 0;
+                
+                if (dist < 150) {
+                    pushForce = (150 - dist) / 150;
+                }
+                
+                // 随机字符
+                const char = chars[Math.floor(Math.random() * chars.length)];
+                
+                // 头部字符（最亮）
+                ctx.fillStyle = '#FFF';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = scheme.glow;
+                ctx.fillText(char, x, y);
+                
+                // 尾部渐变
+                const gradient = ctx.createLinearGradient(x, y - 200, x, y);
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(1, scheme.main);
+                
+                ctx.fillStyle = scheme.main;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = scheme.glow;
+                
+                // 绘制尾迹字符
+                for (let j = 1; j < 20; j++) {
+                    const tailY = y - j * 20;
+                    const tailChar = chars[Math.floor(Math.random() * chars.length)];
+                    ctx.globalAlpha = 1 - (j / 20);
+                    ctx.fillText(tailChar, x, tailY);
+                }
+                
+                ctx.globalAlpha = 1;
+                
+                // 更新位置
+                drops[i] += (0.5 + Math.random() * 0.5) * speed + pushForce * 2;
+                
+                // 重置到顶部
+                if (y > height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+            }
+            
+            // 绘制涟漪
+            ripples = ripples.filter(r => {
+                r.draw();
+                return r.update();
+            });
+            
+            // 绘制特效字符
+            specialChars = specialChars.filter(c => {
+                c.draw();
+                return c.update();
+            });
+            
+            // 扫描线效果
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+            for (let i = 0; i < height; i += 4) {
+                ctx.fillRect(0, i, width, 2);
+            }
+            ctx.restore();
+            
+            // 屏幕边缘渐变
+            const edgeGradient = ctx.createRadialGradient(
+                width / 2, height / 2, Math.min(width, height) * 0.3,
+                width / 2, height / 2, Math.max(width, height) * 0.7
+            );
+            edgeGradient.addColorStop(0, 'transparent');
+            edgeGradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+            ctx.fillStyle = edgeGradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', resize);
+        
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // 产生特效字符
+            if (Math.random() > 0.7) {
+                specialChars.push(new SpecialChar(mouseX, mouseY));
+            }
+        });
+        
+        window.addEventListener('click', (e) => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            ripples.push(new Ripple(e.clientX, e.clientY));
+            
+            // 爆发特效字符
+            for (let i = 0; i < 15; i++) {
+                specialChars.push(new SpecialChar(e.clientX, e.clientY));
+            }
+        });
+        
+        window.addEventListener('wheel', (e) => {
+            speed += e.deltaY > 0 ? -0.2 : 0.2;
+            speed = Math.max(0.2, Math.min(3, speed));
+        });
+        
+        // 触摸支持
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            specialChars.push(new SpecialChar(mouseX, mouseY));
+        }, { passive: false });
+        
+        window.addEventListener('touchstart', (e) => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            ripples.push(new Ripple(e.touches[0].clientX, e.touches[0].clientY));
+        });
+        
+        // 键盘控制
+        window.addEventListener('keydown', (e) => {
+            if (e.key === ' ') {
+                e.preventDefault();
+                // 空格键：所有列重置
+                for (let i = 0; i < drops.length; i++) {
+                    drops[i] = Math.random() * -50;
+                }
+            } else if (e.key === 'c' || e.key === 'C') {
+                colorScheme = (colorScheme + 1) % colorSchemes.length;
+            }
+        });
+        
+        // 性能监控
+        let lastTime = performance.now();
+        let frames = 0;
+        
+        function checkFPS() {
+            frames++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                if (frames < 55) {
+                    // 降低列数以保持性能
+                    columns = Math.max(Math.floor(columns * 0.9), 30);
+                }
+                frames = 0;
+                lastTime = currentTime;
+            }
+            requestAnimationFrame(checkFPS);
+        }
+        
+        init();
+        draw();
+        checkFPS();
+    </script>
+</body>
+</html>

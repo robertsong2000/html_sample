@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矩阵雨 | Matrix Rain</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            background: radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%);
+        }
+        
+        .title {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #0f0;
+            text-shadow: 
+                0 0 10px #0f0,
+                0 0 20px #0f0,
+                0 0 40px #0f0,
+                0 0 80px #0f0;
+            z-index: 20;
+            opacity: 0.15;
+            letter-spacing: 8px;
+            pointer-events: none;
+            animation: pulse 4s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.1; }
+            50% { opacity: 0.25; }
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #0f0;
+            font-size: 12px;
+            z-index: 20;
+            text-shadow: 0 0 10px #0f0;
+            pointer-events: none;
+            opacity: 0.7;
+            line-height: 1.6;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: #0f0;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            z-index: 20;
+            text-align: right;
+            text-shadow: 0 0 5px #0f0;
+            opacity: 0.6;
+        }
+        
+        .glitch {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 15;
+            opacity: 0;
+            background: #0f0;
+            mix-blend-mode: overlay;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 28px;
+                letter-spacing: 4px;
+            }
+            .info {
+                font-size: 10px;
+                bottom: 10px;
+                left: 10px;
+            }
+            .stats {
+                font-size: 9px;
+                top: 10px;
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix"></canvas>
+    <div class="overlay"></div>
+    <div class="title">MATRIX</div>
+    <div class="glitch" id="glitch"></div>
+    <div class="stats">
+        <div id="columns">Columns: 0</div>
+        <div id="fps">FPS: 60</div>
+    </div>
+    <div class="info">
+        移动鼠标改变风向<br>
+        点击触发故障效果
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+        const glitch = document.getElementById('glitch');
+        
+        let width, height;
+        let columns = [];
+        let fontSize = 16;
+        let columnCount = 0;
+        let mouseX = 0, mouseY = 0;
+        let windX = 0;
+        let time = 0;
+        let lastTime = performance.now();
+        let fps = 60;
+        let glitchIntensity = 0;
+        
+        // 字符集
+        const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        
+        // 列类
+        class Column {
+            constructor(x, index) {
+                this.x = x;
+                this.index = index;
+                this.y = Math.random() * height * -1;
+                this.speed = 2 + Math.random() * 8;
+                this.chars = [];
+                this.maxChars = Math.floor(height / fontSize) + 10;
+                this.brightness = 0.3 + Math.random() * 0.7;
+                
+                // 初始化字符
+                for (let i = 0; i < this.maxChars; i++) {
+                    this.chars.push({
+                        char: this.getRandomChar(),
+                        changeRate: Math.random() * 0.1
+                    });
+                }
+            }
+            
+            getRandomChar() {
+                return chars[Math.floor(Math.random() * chars.length)];
+            }
+            
+            update() {
+                this.y += this.speed;
+                
+                // 风的影响
+                this.x += windX * (1 + this.index % 5) * 0.1;
+                
+                // 重置
+                if (this.y > height + fontSize * this.maxChars) {
+                    this.y = Math.random() * height * -0.5;
+                    this.speed = 2 + Math.random() * 8;
+                    this.x = (this.index % columnCount) * fontSize;
+                }
+                
+                // 随机改变字符
+                this.chars.forEach(c => {
+                    if (Math.random() < c.changeRate) {
+                        c.char = this.getRandomChar();
+                    }
+                });
+            }
+            
+            draw() {
+                const charsToDraw = Math.min(this.chars.length, Math.ceil((height + fontSize * 2) / fontSize));
+                
+                for (let i = 0; i < charsToDraw; i++) {
+                    const charY = this.y - i * fontSize;
+                    
+                    if (charY < -fontSize || charY > height + fontSize) continue;
+                    
+                    // 头部字符（最亮）
+                    if (i === 0) {
+                        ctx.fillStyle = '#fff';
+                        ctx.shadowBlur = 20;
+                        ctx.shadowColor = '#0f0';
+                    } else {
+                        // 渐变效果
+                        const alpha = Math.max(0, this.brightness * (1 - i / charsToDraw));
+                        const green = Math.floor(255 * (1 - i / charsToDraw * 0.5));
+                        ctx.fillStyle = `rgba(0, ${green}, 0, ${alpha})`;
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#0f0';
+                    }
+                    
+                    ctx.fillText(this.chars[i].char, this.x, charY);
+                }
+                
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        // 故障效果
+        function triggerGlitch() {
+            glitchIntensity = 1;
+            
+            // 随机改变一些列的颜色
+            columns.forEach(col => {
+                if (Math.random() > 0.7) {
+                    col.brightness = Math.random();
+                }
+            });
+        }
+        
+        function updateGlitch() {
+            if (glitchIntensity > 0) {
+                glitchIntensity -= 0.05;
+                glitch.style.opacity = glitchIntensity * 0.3;
+                
+                // 随机位移
+                if (Math.random() > 0.5) {
+                    canvas.style.transform = `translateX(${(Math.random() - 0.5) * 10 * glitchIntensity}px)`;
+                } else {
+                    canvas.style.transform = 'translateX(0)';
+                }
+            } else {
+                canvas.style.transform = 'translateX(0)';
+                glitch.style.opacity = 0;
+            }
+        }
+        
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            columnCount = Math.ceil(width / fontSize) + 10;
+            
+            columns = [];
+            for (let i = 0; i < columnCount; i++) {
+                columns.push(new Column(i * fontSize, i));
+            }
+            
+            ctx.font = `${fontSize}px "Courier New", monospace`;
+            
+            document.getElementById('columns').textContent = `Columns: ${columnCount}`;
+        }
+        
+        function updateFPS() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = Math.round(1000 / delta);
+            document.getElementById('fps').textContent = `FPS: ${fps}`;
+        }
+        
+        function animate() {
+            time++;
+            
+            // 半透明黑色背景产生拖尾效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新风向
+            const targetWindX = (mouseX - width / 2) / width * 5;
+            windX += (targetWindX - windX) * 0.05;
+            
+            // 更新和绘制列
+            columns.forEach(col => {
+                col.update();
+                col.draw();
+            });
+            
+            // 更新故障效果
+            updateGlitch();
+            
+            // 随机小故障
+            if (Math.random() < 0.001) {
+                triggerGlitch();
+            }
+            
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', init);
+        
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        });
+        
+        window.addEventListener('click', (e) => {
+            triggerGlitch();
+        });
+        
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                triggerGlitch();
+            }
+        });
+        
+        // 键盘控制
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                triggerGlitch();
+            }
+        });
+        
+        // 初始化
+        init();
+        mouseX = width / 2;
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>几何万花筒 | Geometric Kaleidoscope</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="kaleidoscope"></canvas>
+    <div class="title">Kaleidoscope</div>
+    <div class="info">移动鼠标改变图案 | 点击切换配色 | 滚轮调整对称轴数</div>
+    
+    <script>
+        const canvas = document.getElementById('kaleidoscope');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let segments = 8;
+        let colorScheme = 0;
+        let time = 0;
+        
+        const colorSchemes = [
+            ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'],
+            ['#E056FD', '#F687B3', '#FAB1A0', '#FFEAA7', '#81ECEC'],
+            ['#00CEC9', '#6C5CE7', '#FD79A8', '#FDCB6E', '#00B894'],
+            ['#FF4757', '#2ED573', '#1E90FF', '#FFA502', '#9B59B6'],
+            ['#F8B500', '#FF6F61', '#5B5EA6', '#9B2335', '#00A4CC'],
+        ];
+        
+        // 图形粒子
+        let shapes = [];
+        
+        class Shape {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = Math.random() * 200 + 50;
+                this.size = Math.random() * 30 + 10;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+                this.pulseSpeed = Math.random() * 0.05 + 0.02;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+                this.type = Math.floor(Math.random() * 4);
+                this.colorIndex = Math.floor(Math.random() * 5);
+                this.orbitSpeed = (Math.random() - 0.5) * 0.01;
+            }
+            
+            update() {
+                this.angle += this.orbitSpeed;
+                this.pulsePhase += this.pulseSpeed;
+                
+                // 鼠标影响
+                const influence = 1 - Math.min(1, Math.sqrt(
+                    Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2)
+                ) / 300);
+                
+                this.angle += influence * 0.02;
+            }
+            
+            draw() {
+                const colors = colorSchemes[colorScheme];
+                const color = colors[this.colorIndex];
+                const pulse = Math.sin(this.pulsePhase) * 0.3 + 0.7;
+                const size = this.size * pulse;
+                
+                const x = Math.cos(this.angle) * this.radius;
+                const y = Math.sin(this.angle) * this.radius;
+                
+                ctx.save();
+                ctx.translate(centerX, centerY);
+                ctx.globalAlpha = 0.8;
+                
+                // 为每个对称段绘制
+                for (let i = 0; i < segments; i++) {
+                    ctx.save();
+                    ctx.rotate((i / segments) * Math.PI * 2);
+                    
+                    ctx.fillStyle = color;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = color;
+                    
+                    switch (this.type) {
+                        case 0: this.drawTriangle(x, y, size); break;
+                        case 1: this.drawSquare(x, y, size); break;
+                        case 2: this.drawCircle(x, y, size); break;
+                        case 3: this.drawDiamond(x, y, size); break;
+                    }
+                    
+                    ctx.restore();
+                }
+                
+                ctx.restore();
+            }
+            
+            drawTriangle(x, y, size) {
+                ctx.beginPath();
+                ctx.moveTo(x, y - size);
+                ctx.lineTo(x - size * 0.866, y + size * 0.5);
+                ctx.lineTo(x + size * 0.866, y + size * 0.5);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.globalAlpha *= 0.3;
+                ctx.fill();
+            }
+            
+            drawSquare(x, y, size) {
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(time * 0.5);
+                ctx.strokeRect(-size / 2, -size / 2, size, size);
+                ctx.globalAlpha *= 0.3;
+                ctx.fillRect(-size / 2, -size / 2, size, size);
+                ctx.restore();
+            }
+            
+            drawCircle(x, y, size) {
+                ctx.beginPath();
+                ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha *= 0.3;
+                ctx.fill();
+            }
+            
+            drawDiamond(x, y, size) {
+                ctx.beginPath();
+                ctx.moveTo(x, y - size);
+                ctx.lineTo(x + size * 0.7, y);
+                ctx.lineTo(x, y + size);
+                ctx.lineTo(x - size * 0.7, y);
+                ctx.closePath();
+                ctx.stroke();
+                ctx.globalAlpha *= 0.3;
+                ctx.fill();
+            }
+        }
+        
+        // 连接线
+        function drawConnections() {
+            const colors = colorSchemes[colorScheme];
+            
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.globalAlpha = 0.3;
+            
+            for (let i = 0; i < segments; i++) {
+                ctx.save();
+                ctx.rotate((i / segments) * Math.PI * 2);
+                
+                const gradient = ctx.createLinearGradient(0, 0, 300, 0);
+                gradient.addColorStop(0, colors[i % colors.length] + '00');
+                gradient.addColorStop(0.5, colors[i % colors.length]);
+                gradient.addColorStop(1, colors[(i + 1) % colors.length] + '00');
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                
+                for (let r = 0; r < 300; r += 10) {
+                    const wave = Math.sin(r * 0.05 + time * 2) * 20;
+                    ctx.lineTo(r, wave);
+                }
+                
+                ctx.stroke();
+                ctx.restore();
+            }
+            
+            ctx.restore();
+        }
+        
+        // 中心装饰
+        function drawCenter() {
+            const colors = colorSchemes[colorScheme];
+            
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            
+            // 旋转环
+            for (let i = 0; i < 3; i++) {
+                ctx.save();
+                ctx.rotate(time * (i + 1) * 0.5);
+                ctx.strokeStyle = colors[i % colors.length];
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = 0.5;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = colors[i % colors.length];
+                
+                ctx.beginPath();
+                const radius = 30 + i * 20;
+                const arcLength = Math.PI * 1.5;
+                ctx.arc(0, 0, radius, 0, arcLength);
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+            
+            // 中心点
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = colors[0];
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = colors[0];
+            ctx.beginPath();
+            ctx.arc(0, 0, 8, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        // 背景渐变
+        function drawBackground() {
+            const colors = colorSchemes[colorScheme];
+            
+            ctx.save();
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.max(width, height) * 0.7
+            );
+            gradient.addColorStop(0, colors[0] + '20');
+            gradient.addColorStop(0.5, colors[2] + '10');
+            gradient.addColorStop(1, '#000000');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            ctx.restore();
+        }
+        
+        function init() {
+            resize();
+            
+            for (let i = 0; i < 20; i++) {
+                shapes.push(new Shape());
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function draw() {
+            // 淡出效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            drawBackground();
+            drawConnections();
+            
+            // 更新和绘制形状
+            shapes.forEach(shape => {
+                shape.update();
+                shape.draw();
+            });
+            
+            drawCenter();
+            
+            time += 0.02;
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', resize);
+        
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        window.addEventListener('click', () => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+        });
+        
+        window.addEventListener('wheel', (e) => {
+            segments += e.deltaY > 0 ? -1 : 1;
+            segments = Math.max(4, Math.min(16, segments));
+        });
+        
+        // 触摸支持
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+        
+        window.addEventListener('touchstart', () => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+        });
+        
+        // 键盘控制
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') {
+                segments = Math.min(16, segments + 1);
+            } else if (e.key === 'ArrowDown') {
+                segments = Math.max(4, segments - 1);
+            } else if (e.key === ' ') {
+                // 随机化所有形状
+                shapes.forEach(s => s.reset());
+            }
+        });
+        
+        // 性能监控
+        let lastTime = performance.now();
+        let frames = 0;
+        
+        function checkFPS() {
+            frames++;
+            const currentTime = performance.now();
+            if (currentTime - lastTime >= 1000) {
+                if (frames < 55 && shapes.length > 10) {
+                    shapes = shapes.slice(0, shapes.length - 5);
+                }
+                frames = 0;
+                lastTime = currentTime;
+            }
+            requestAnimationFrame(checkFPS);
+        }
+        
+        init();
+        draw();
+        checkFPS();
+    </script>
+</body>
+</html>

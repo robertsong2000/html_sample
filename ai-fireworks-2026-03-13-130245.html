@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>烟花盛宴 | Fireworks</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .ui {
+            position: fixed;
+            z-index: 10;
+            color: rgba(255, 255, 255, 0.8);
+            pointer-events: none;
+        }
+        
+        .title {
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 10px;
+            text-shadow: 
+                0 0 20px rgba(255, 200, 100, 0.8),
+                0 0 40px rgba(255, 150, 50, 0.4);
+        }
+        
+        .info {
+            bottom: 25px;
+            left: 25px;
+            font-size: 13px;
+            line-height: 1.8;
+            text-shadow: 0 0 10px rgba(255, 200, 100, 0.5);
+            opacity: 0.7;
+        }
+        
+        .stats {
+            top: 25px;
+            right: 25px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            text-align: right;
+            text-shadow: 0 0 5px rgba(255, 200, 100, 0.5);
+            opacity: 0.6;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 18px;
+                letter-spacing: 5px;
+            }
+            .info {
+                font-size: 11px;
+                bottom: 15px;
+                left: 15px;
+            }
+            .stats {
+                font-size: 9px;
+                top: 15px;
+                right: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fireworks"></canvas>
+    
+    <div class="ui title">FIREWORKS</div>
+    
+    <div class="ui stats">
+        <div id="particles">Particles: 0</div>
+        <div id="fireworksCount">Fireworks: 0</div>
+        <div id="fps">FPS: 60</div>
+    </div>
+    
+    <div class="ui info">
+        点击发射烟花<br>
+        移动鼠标调整发射方向
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('fireworks');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let time = 0;
+        let lastTime = performance.now();
+        let fps = 60;
+        
+        // 烟花和粒子数组
+        let fireworks = [];
+        let particles = [];
+        
+        // 鼠标位置
+        let mouseX = 0, mouseY = 0;
+        
+        // 颜色主题
+        const colorPalettes = [
+            ['#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3', '#54a0ff'],
+            ['#f368e0', '#ff9f43', '#ee5a24', '#00d2d3', '#10ac84'],
+            ['#5f27cd', '#341f97', '#ff6b6b', '#feca57', '#48dbfb'],
+            ['#e74c3c', '#f39c12', '#2ecc71', '#3498db', '#9b59b6'],
+            ['#fd79a8', '#fdcb6e', '#6c5ce7', '#00cec9', '#ff7675']
+        ];
+        
+        // 烟花类
+        class Firework {
+            constructor(startX, startY, targetX, targetY) {
+                this.x = startX;
+                this.y = startY;
+                this.startX = startX;
+                this.startY = startY;
+                this.targetX = targetX;
+                this.targetY = targetY;
+                
+                // 计算飞行角度和速度
+                const angle = Math.atan2(targetY - startY, targetX - startX);
+                const distance = Math.sqrt(Math.pow(targetX - startX, 2) + Math.pow(targetY - startY, 2));
+                const speed = Math.min(15, distance / 30);
+                
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                this.trail = [];
+                this.trailLength = 10;
+                
+                this.color = this.getRandomColor();
+                this.exploded = false;
+                this.distanceToTarget = distance;
+            }
+            
+            getRandomColor() {
+                const palette = colorPalettes[Math.floor(Math.random() * colorPalettes.length)];
+                return palette[Math.floor(Math.random() * palette.length)];
+            }
+            
+            update() {
+                // 保存轨迹
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.trailLength) {
+                    this.trail.shift();
+                }
+                
+                // 移动
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 重力
+                this.vy += 0.2;
+                
+                // 检查是否到达目标
+                const currentDistance = Math.sqrt(
+                    Math.pow(this.x - this.startX, 2) + 
+                    Math.pow(this.y - this.startY, 2)
+                );
+                
+                if (currentDistance >= this.distanceToTarget * 0.9 || this.vy >= 0) {
+                    this.explode();
+                    return false;
+                }
+                
+                return true;
+            }
+            
+            explode() {
+                const particleCount = 80 + Math.floor(Math.random() * 40);
+                const explosionType = Math.floor(Math.random() * 4);
+                
+                for (let i = 0; i < particleCount; i++) {
+                    let angle, speed;
+                    
+                    switch (explosionType) {
+                        case 0: // 圆形爆炸
+                            angle = (Math.PI * 2 / particleCount) * i + Math.random() * 0.2;
+                            speed = 2 + Math.random() * 4;
+                            break;
+                        case 1: // 心形
+                            const t = (Math.PI * 2 / particleCount) * i;
+                            angle = t;
+                            speed = 3 + Math.random() * 3;
+                            break;
+                        case 2: // 星形
+                            angle = (Math.PI * 2 / particleCount) * i;
+                            speed = 2 + (i % 5 === 0 ? 4 : 0) + Math.random() * 2;
+                            break;
+                        case 3: // 随机
+                        default:
+                            angle = Math.random() * Math.PI * 2;
+                            speed = 1 + Math.random() * 5;
+                    }
+                    
+                    particles.push(new Particle(
+                        this.x,
+                        this.y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        this.color
+                    ));
+                }
+                
+                // 添加闪光效果
+                for (let i = 0; i < 20; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 2;
+                    particles.push(new Particle(
+                        this.x,
+                        this.y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed,
+                        '#ffffff',
+                        true
+                    ));
+                }
+            }
+            
+            draw() {
+                // 绘制轨迹
+                for (let i = 0; i < this.trail.length; i++) {
+                    const alpha = i / this.trail.length;
+                    const size = 2 + alpha * 2;
+                    
+                    ctx.beginPath();
+                    ctx.arc(this.trail[i].x, this.trail[i].y, size, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 200, 100, ${alpha * 0.6})`;
+                    ctx.fill();
+                }
+                
+                // 绘制主体
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                
+                // 发光效果
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 15);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 15, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        // 粒子类
+        class Particle {
+            constructor(x, y, vx, vy, color, isSparkle = false) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx;
+                this.vy = vy;
+                this.color = color;
+                this.alpha = 1;
+                this.decay = isSparkle ? 0.05 : 0.015 + Math.random() * 0.01;
+                this.size = isSparkle ? 2 : 3 + Math.random() * 2;
+                this.isSparkle = isSparkle;
+                this.trail = [];
+                this.trailLength = isSparkle ? 3 : 8;
+            }
+            
+            update() {
+                // 保存轨迹
+                this.trail.push({ x: this.x, y: this.y, alpha: this.alpha });
+                if (this.trail.length > this.trailLength) {
+                    this.trail.shift();
+                }
+                
+                // 移动
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 重力和阻力
+                this.vy += 0.08;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                
+                // 衰减
+                this.alpha -= this.decay;
+                
+                return this.alpha > 0;
+            }
+            
+            draw() {
+                // 绘制轨迹
+                for (let i = 0; i < this.trail.length; i++) {
+                    const t = this.trail[i];
+                    const trailAlpha = (i / this.trail.length) * t.alpha * 0.5;
+                    
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, this.size * 0.7, 0, Math.PI * 2);
+                    ctx.fillStyle = this.hexToRgba(this.color, trailAlpha);
+                    ctx.fill();
+                }
+                
+                // 绘制主体
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.hexToRgba(this.color, this.alpha);
+                ctx.fill();
+                
+                // 发光
+                if (!this.isSparkle) {
+                    const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 3);
+                    gradient.addColorStop(0, this.hexToRgba(this.color, this.alpha * 0.5));
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+            }
+            
+            hexToRgba(hex, alpha) {
+                const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+                if (result) {
+                    return `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})`;
+                }
+                return `rgba(255, 255, 255, ${alpha})`;
+            }
+        }
+        
+        // 绘制星空背景
+        function drawStars() {
+            const starCount = 100;
+            for (let i = 0; i < starCount; i++) {
+                const x = (i * 137.5) % width;
+                const y = (i * 97.3) % height;
+                const size = (Math.sin(time * 0.01 + i) + 1) * 0.5 + 0.5;
+                const twinkle = Math.sin(time * 0.05 + i * 0.1) * 0.3 + 0.7;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${twinkle * 0.6})`;
+                ctx.fill();
+            }
+        }
+        
+        // 绘制城市轮廓
+        function drawCityline() {
+            ctx.fillStyle = '#0a0a15';
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            
+            const buildings = [
+                { x: 0, w: 50, h: 120 },
+                { x: 60, w: 40, h: 180 },
+                { x: 110, w: 60, h: 150 },
+                { x: 180, w: 35, h: 200 },
+                { x: 225, w: 45, h: 160 },
+                { x: 280, w: 55, h: 220 },
+                { x: 345, w: 40, h: 140 },
+                { x: 395, w: 50, h: 190 },
+                { x: 455, w: 60, h: 170 },
+                { x: 525, w: 45, h: 210 },
+            ];
+            
+            // 根据屏幕宽度调整建筑
+            const scale = width / 600;
+            
+            buildings.forEach(b => {
+                const bx = b.x * scale;
+                const bw = b.w * scale;
+                const bh = b.h * (0.8 + Math.random() * 0.4);
+                ctx.lineTo(bx, height - bh);
+                ctx.lineTo(bx + bw, height - bh);
+                ctx.lineTo(bx + bw, height);
+            });
+            
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 建筑窗户
+            buildings.forEach(b => {
+                const bx = b.x * scale;
+                const bw = b.w * scale;
+                const bh = b.h * (0.8 + Math.random() * 0.4);
+                
+                for (let wy = height - bh + 10; wy < height - 20; wy += 15) {
+                    for (let wx = bx + 5; wx < bx + bw - 5; wx += 12) {
+                        if (Math.random() > 0.3) {
+                            const brightness = Math.random() * 0.5 + 0.2;
+                            ctx.fillStyle = `rgba(255, 230, 150, ${brightness})`;
+                            ctx.fillRect(wx, wy, 6, 8);
+                        }
+                    }
+                }
+            });
+        }
+        
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2;
+            mouseY = height / 3;
+        }
+        
+        function launchFirework(targetX, targetY) {
+            const startX = width * (0.2 + Math.random() * 0.6);
+            const startY = height;
+            fireworks.push(new Firework(startX, startY, targetX, targetY));
+        }
+        
+        function updateFPS() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = Math.round(1000 / delta);
+            
+            document.getElementById('fps').textContent = `FPS: ${fps}`;
+            document.getElementById('particles').textContent = `Particles: ${particles.length}`;
+            document.getElementById('fireworksCount').textContent = `Fireworks: ${fireworks.length}`;
+        }
+        
+        function animate() {
+            time++;
+            
+            // 半透明背景产生拖尾
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制星空
+            drawStars();
+            
+            // 绘制城市轮廓
+            drawCityline();
+            
+            // 自动发射烟花
+            if (Math.random() < 0.02) {
+                launchFirework(
+                    width * (0.1 + Math.random() * 0.8),
+                    height * (0.1 + Math.random() * 0.4)
+                );
+            }
+            
+            // 更新和绘制烟花
+            fireworks = fireworks.filter(fw => {
+                const alive = fw.update();
+                if (alive) fw.draw();
+                return alive;
+            });
+            
+            // 更新和绘制粒子
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw();
+                return alive;
+            });
+            
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', init);
+        
+        canvas.addEventListener('click', (e) => {
+            launchFirework(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                launchFirework(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        });
+        
+        // 初始化
+        init();
+        animate();
+    </script>
+</body>
+</html>

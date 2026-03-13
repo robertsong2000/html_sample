@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火焰效果 | Fire Effect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .ui {
+            position: fixed;
+            z-index: 10;
+            color: rgba(255, 200, 100, 0.9);
+            pointer-events: none;
+        }
+        
+        .title {
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            text-shadow: 
+                0 0 20px rgba(255, 100, 0, 0.8),
+                0 0 40px rgba(255, 50, 0, 0.6),
+                0 0 60px rgba(255, 0, 0, 0.4);
+        }
+        
+        .info {
+            bottom: 25px;
+            left: 25px;
+            font-size: 13px;
+            line-height: 1.8;
+            text-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
+            opacity: 0.8;
+        }
+        
+        .stats {
+            top: 25px;
+            right: 25px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            text-align: right;
+            text-shadow: 0 0 5px rgba(255, 100, 0, 0.5);
+            opacity: 0.7;
+        }
+        
+        .glow {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 40%;
+            background: radial-gradient(ellipse at bottom, rgba(255, 50, 0, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 20px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 11px;
+                bottom: 15px;
+                left: 15px;
+            }
+            .stats {
+                font-size: 9px;
+                top: 15px;
+                right: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fire"></canvas>
+    <div class="glow"></div>
+    
+    <div class="ui title">FIRE</div>
+    
+    <div class="ui stats">
+        <div id="particles">Particles: 0</div>
+        <div id="fps">FPS: 60</div>
+    </div>
+    
+    <div class="ui info">
+        移动鼠标控制火焰方向<br>
+        点击产生火焰爆发
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('fire');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let time = 0;
+        let lastTime = performance.now();
+        let fps = 60;
+        
+        // 火焰粒子
+        let fireParticles = [];
+        
+        // 火花粒子
+        let sparks = [];
+        
+        // 烟雾粒子
+        let smoke = [];
+        
+        // 鼠标位置
+        let mouseX = 0, mouseY = 0;
+        let windX = 0;
+        
+        // 火焰粒子类
+        class FireParticle {
+            constructor(x, y, vx = 0, vy = 0) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx + (Math.random() - 0.5) * 2;
+                this.vy = vy - Math.random() * 3 - 2;
+                this.size = 10 + Math.random() * 20;
+                this.life = 1;
+                this.decay = 0.01 + Math.random() * 0.02;
+                this.hue = 30 + Math.random() * 30; // 橙黄色范围
+            }
+            
+            update() {
+                // 风的影响
+                this.vx += windX * 0.1;
+                
+                // 向上的力
+                this.vy -= 0.05;
+                
+                // 阻力
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size *= 0.98;
+                
+                // 颜色随生命周期变化：黄 -> 橙 -> 红 -> 暗红
+                this.hue = 30 + (1 - this.life) * 30;
+                
+                return this.life > 0 && this.size > 0.5;
+            }
+            
+            draw() {
+                const alpha = this.life * 0.8;
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size
+                );
+                
+                gradient.addColorStop(0, `hsla(${this.hue}, 100%, 70%, ${alpha})`);
+                gradient.addColorStop(0.4, `hsla(${this.hue - 10}, 100%, 50%, ${alpha * 0.6})`);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+        
+        // 火花类
+        class Spark {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 8 + 4;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed - 5;
+                this.size = 1 + Math.random() * 2;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.03;
+                this.trail = [];
+            }
+            
+            update() {
+                // 保存轨迹
+                this.trail.push({ x: this.x, y: this.y, life: this.life });
+                if (this.trail.length > 10) {
+                    this.trail.shift();
+                }
+                
+                this.vy += 0.2; // 重力
+                this.vx += windX * 0.05;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                
+                return this.life > 0;
+            }
+            
+            draw() {
+                // 绘制轨迹
+                this.trail.forEach((point, index) => {
+                    const trailAlpha = (index / this.trail.length) * this.life * 0.5;
+                    const trailSize = this.size * (index / this.trail.length);
+                    
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, trailSize, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(255, 200, 50, ${trailAlpha})`;
+                    ctx.fill();
+                });
+                
+                // 绘制火花本体
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 200, ${this.life})`;
+                ctx.fill();
+                
+                // 发光
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 200, 50, ${this.life * 0.5})`;
+                ctx.fill();
+            }
+        }
+        
+        // 烟雾类
+        class Smoke {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = -Math.random() * 1 - 0.5;
+                this.size = 5 + Math.random() * 10;
+                this.life = 1;
+                this.decay = 0.005 + Math.random() * 0.01;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+            }
+            
+            update() {
+                this.vx += windX * 0.02;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size += 0.5;
+                this.rotation += this.rotationSpeed;
+                
+                return this.life > 0;
+            }
+            
+            draw() {
+                const alpha = this.life * 0.3;
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+                gradient.addColorStop(0, `rgba(100, 100, 100, ${alpha})`);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2;
+        }
+        
+        // 生成基础火焰
+        function generateBaseFire() {
+            const fireCount = Math.floor(3 + Math.random() * 5);
+            
+            for (let i = 0; i < fireCount; i++) {
+                const x = width / 2 + (Math.random() - 0.5) * 100;
+                const y = height - 50;
+                fireParticles.push(new FireParticle(x, y));
+            }
+            
+            // 偶尔生成烟雾
+            if (Math.random() < 0.1) {
+                const x = width / 2 + (Math.random() - 0.5) * 80;
+                const y = height - 150;
+                smoke.push(new Smoke(x, y));
+            }
+        }
+        
+        // 火焰爆发
+        function fireBurst(x, y) {
+            // 大量火焰粒子
+            for (let i = 0; i < 50; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 5 + 2;
+                fireParticles.push(new FireParticle(
+                    x, y,
+                    Math.cos(angle) * speed,
+                    Math.sin(angle) * speed - 3
+                ));
+            }
+            
+            // 火花
+            for (let i = 0; i < 20; i++) {
+                sparks.push(new Spark(x, y));
+            }
+        }
+        
+        function updateFPS() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = Math.round(1000 / delta);
+            document.getElementById('fps').textContent = `FPS: ${fps}`;
+            document.getElementById('particles').textContent = `Particles: ${fireParticles.length + sparks.length + smoke.length}`;
+        }
+        
+        function animate() {
+            time++;
+            
+            // 半透明背景产生拖尾效果
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新风向
+            const targetWindX = (mouseX - width / 2) / width * 3;
+            windX += (targetWindX - windX) * 0.05;
+            
+            // 生成基础火焰
+            generateBaseFire();
+            
+            // 更新和绘制烟雾（最底层）
+            smoke = smoke.filter(s => {
+                const alive = s.update();
+                s.draw();
+                return alive;
+            });
+            
+            // 更新和绘制火焰粒子
+            fireParticles = fireParticles.filter(p => {
+                const alive = p.update();
+                p.draw();
+                return alive;
+            });
+            
+            // 更新和绘制火花
+            sparks = sparks.filter(s => {
+                const alive = s.update();
+                s.draw();
+                return alive;
+            });
+            
+            // 绘制底部发光
+            const bottomGlow = ctx.createRadialGradient(
+                width / 2, height, 0,
+                width / 2, height, 300
+            );
+            bottomGlow.addColorStop(0, 'rgba(255, 100, 0, 0.3)');
+            bottomGlow.addColorStop(0.5, 'rgba(255, 50, 0, 0.1)');
+            bottomGlow.addColorStop(1, 'transparent');
+            
+            ctx.fillStyle = bottomGlow;
+            ctx.fillRect(0, height - 400, width, 400);
+            
+            // 绘制木炭效果
+            ctx.fillStyle = 'rgba(50, 20, 10, 0.8)';
+            ctx.fillRect(width / 2 - 80, height - 30, 160, 30);
+            
+            // 木炭发光
+            const emberGlow = ctx.createLinearGradient(width / 2 - 80, height - 30, width / 2 + 80, height - 30);
+            emberGlow.addColorStop(0, 'rgba(255, 50, 0, 0.3)');
+            emberGlow.addColorStop(0.5, 'rgba(255, 100, 0, 0.5)');
+            emberGlow.addColorStop(1, 'rgba(255, 50, 0, 0.3)');
+            
+            ctx.fillStyle = emberGlow;
+            ctx.fillRect(width / 2 - 80, height - 30, 160, 30);
+            
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', init);
+        
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            fireBurst(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+            }
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                fireBurst(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        });
+        
+        // 初始化
+        init();
+        animate();
+    </script>
+</body>
+</html>

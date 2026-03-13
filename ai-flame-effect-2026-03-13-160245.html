@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火焰效果 | Flame Effect</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .ui {
+            position: fixed;
+            z-index: 10;
+            color: #fff;
+            pointer-events: none;
+        }
+        
+        .title {
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            text-shadow: 
+                0 0 20px #ff6600,
+                0 0 40px #ff3300,
+                0 0 60px #ff0000;
+            animation: flicker 0.1s infinite alternate;
+        }
+        
+        @keyframes flicker {
+            0% { opacity: 0.95; }
+            100% { opacity: 1; }
+        }
+        
+        .info {
+            bottom: 25px;
+            left: 25px;
+            font-size: 13px;
+            line-height: 1.8;
+            text-shadow: 0 0 10px rgba(255, 100, 0, 0.5);
+            opacity: 0.7;
+        }
+        
+        .stats {
+            top: 25px;
+            right: 25px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            text-align: right;
+            text-shadow: 0 0 5px rgba(255, 100, 0, 0.5);
+            opacity: 0.6;
+        }
+        
+        .glow {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            height: 40%;
+            background: radial-gradient(ellipse at bottom, rgba(255, 50, 0, 0.2) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 20px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 11px;
+                bottom: 15px;
+                left: 15px;
+            }
+            .stats {
+                font-size: 9px;
+                top: 15px;
+                right: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="flame"></canvas>
+    <div class="glow"></div>
+    
+    <div class="ui title">FLAME</div>
+    
+    <div class="ui stats">
+        <div id="particles">Particles: 0</div>
+        <div id="fps">FPS: 60</div>
+    </div>
+    
+    <div class="ui info">
+        移动鼠标改变风向<br>
+        点击产生火焰爆发
+    </div>
+    
+    <script>
+        const canvas = document.getElementById('flame');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let time = 0;
+        let lastTime = performance.now();
+        let fps = 60;
+        
+        // 粒子数组
+        let particles = [];
+        let sparks = [];
+        
+        // 鼠标位置
+        let mouseX = 0, mouseY = 0;
+        let windX = 0;
+        
+        // 火焰粒子类
+        class FlameParticle {
+            constructor(x, y, isExplosion = false) {
+                this.x = x;
+                this.y = y;
+                this.size = isExplosion ? 15 + Math.random() * 20 : 8 + Math.random() * 12;
+                this.speedY = isExplosion ? -(5 + Math.random() * 10) : -(2 + Math.random() * 4);
+                this.speedX = (Math.random() - 0.5) * (isExplosion ? 8 : 3);
+                this.life = 1;
+                this.decay = isExplosion ? 0.015 : 0.008 + Math.random() * 0.012;
+                this.isExplosion = isExplosion;
+                
+                // 火焰颜色
+                this.hue = 20 + Math.random() * 30; // 橙红色范围
+            }
+            
+            update() {
+                // 应用风向
+                this.speedX += windX * 0.1;
+                
+                // 空气阻力
+                this.speedX *= 0.99;
+                this.speedY *= 0.99;
+                
+                // 上升力
+                this.speedY -= 0.05;
+                
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+                this.size *= 0.98;
+                
+                return this.life > 0 && this.size > 0.5;
+            }
+            
+            draw() {
+                const alpha = this.life;
+                
+                // 外层发光
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 2
+                );
+                
+                const lightness = 50 + (1 - this.life) * 30;
+                gradient.addColorStop(0, `hsla(${this.hue - this.life * 20}, 100%, ${lightness}%, ${alpha})`);
+                gradient.addColorStop(0.4, `hsla(${this.hue}, 100%, 50%, ${alpha * 0.6})`);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 核心
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue + 20}, 100%, 70%, ${alpha})`;
+                ctx.fill();
+                
+                // 最亮的中心
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(60, 100%, 90%, ${alpha * 0.8})`;
+                ctx.fill();
+            }
+        }
+        
+        // 火星类
+        class Spark {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.speedX = (Math.random() - 0.5) * 6;
+                this.speedY = -(Math.random() * 8 + 2);
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.03;
+                this.size = 1 + Math.random() * 2;
+            }
+            
+            update() {
+                this.speedX += windX * 0.2;
+                this.speedY += 0.1; // 重力
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= this.decay;
+                return this.life > 0;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 200, 100, ${this.life})`;
+                ctx.fill();
+                
+                // 拖尾
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - this.speedX * 3, this.y - this.speedY * 3);
+                ctx.strokeStyle = `rgba(255, 150, 50, ${this.life * 0.5})`;
+                ctx.lineWidth = this.size * 0.5;
+                ctx.stroke();
+            }
+        }
+        
+        // 创建基础火焰
+        function createBaseFlame() {
+            const flameSources = [
+                { x: width * 0.3, intensity: 1 },
+                { x: width * 0.5, intensity: 1.5 },
+                { x: width * 0.7, intensity: 1 }
+            ];
+            
+            flameSources.forEach(source => {
+                const count = Math.floor(2 + Math.random() * 3 * source.intensity);
+                for (let i = 0; i < count; i++) {
+                    const x = source.x + (Math.random() - 0.5) * 60;
+                    const y = height - 20 + Math.random() * 20;
+                    particles.push(new FlameParticle(x, y));
+                }
+            });
+            
+            // 随机火星
+            if (Math.random() < 0.1) {
+                const x = width * 0.5 + (Math.random() - 0.5) * 200;
+                sparks.push(new Spark(x, height - 30));
+            }
+        }
+        
+        // 创建火焰爆发
+        function createExplosion(x, y) {
+            const count = 50 + Math.floor(Math.random() * 30);
+            for (let i = 0; i < count; i++) {
+                particles.push(new FlameParticle(x, y, true));
+            }
+            
+            // 火星
+            for (let i = 0; i < 20; i++) {
+                sparks.push(new Spark(x, y));
+            }
+        }
+        
+        // 绘制背景
+        function drawBackground() {
+            // 渐变背景
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#000');
+            gradient.addColorStop(0.7, '#0a0500');
+            gradient.addColorStop(1, '#1a0a00');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 地面发光
+            const groundGlow = ctx.createRadialGradient(
+                width / 2, height, 0,
+                width / 2, height, height * 0.5
+            );
+            groundGlow.addColorStop(0, 'rgba(255, 50, 0, 0.3)');
+            groundGlow.addColorStop(0.5, 'rgba(255, 100, 0, 0.1)');
+            groundGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = groundGlow;
+            ctx.fillRect(0, height * 0.5, width, height * 0.5);
+        }
+        
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            mouseX = width / 2;
+            mouseY = height / 2;
+        }
+        
+        function updateFPS() {
+            const now = performance.now();
+            const delta = now - lastTime;
+            lastTime = now;
+            fps = Math.round(1000 / delta);
+            document.getElementById('fps').textContent = `FPS: ${fps}`;
+            document.getElementById('particles').textContent = `Particles: ${particles.length + sparks.length}`;
+        }
+        
+        function animate() {
+            time++;
+            
+            // 绘制背景
+            drawBackground();
+            
+            // 更新风向（基于鼠标位置）
+            const targetWindX = (mouseX - width / 2) / width * 3;
+            windX += (targetWindX - windX) * 0.05;
+            
+            // 创建基础火焰
+            createBaseFlame();
+            
+            // 更新和绘制粒子
+            particles = particles.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw();
+                return alive;
+            });
+            
+            // 更新和绘制火星
+            sparks = sparks.filter(s => {
+                const alive = s.update();
+                if (alive) s.draw();
+                return alive;
+            });
+            
+            // 限制粒子数量
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+            if (sparks.length > 100) {
+                sparks = sparks.slice(-100);
+            }
+            
+            updateFPS();
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', init);
+        
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            createExplosion(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        });
+        
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                createExplosion(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        });
+        
+        // 初始化
+        init();
+        animate();
+    </script>
+</body>
+</html>

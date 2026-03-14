@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>银河系 | Galaxy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="galaxy"></canvas>
+    <div class="title">Galaxy</div>
+    <div class="info">移动鼠标旋转视角 | 点击产生超新星爆发 | 滚轮缩放</div>
+    
+    <script>
+        const canvas = document.getElementById('galaxy');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let rotationX = 0, rotationY = 0;
+        let zoom = 1;
+        let time = 0;
+        
+        // 星星
+        let stars = [];
+        
+        class Star {
+            constructor(armIndex, distance) {
+                this.armIndex = armIndex;
+                this.distance = distance;
+                this.angle = (armIndex / 4) * Math.PI * 2 + distance * 0.01 + (Math.random() - 0.5) * 0.5;
+                this.z = (Math.random() - 0.5) * 50;
+                this.size = Math.random() * 2 + 0.5;
+                this.brightness = Math.random() * 0.5 + 0.5;
+                this.color = this.getStarColor();
+                this.orbitSpeed = 0.0002 + Math.random() * 0.0003;
+            }
+            
+            getStarColor() {
+                const colors = [
+                    '#ffffff',
+                    '#ffe4c4',
+                    '#add8e6',
+                    '#fffacd',
+                    '#e6e6fa',
+                    '#ffc0cb',
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            update() {
+                this.angle += this.orbitSpeed;
+            }
+            
+            project() {
+                // 3D旋转
+                const cosX = Math.cos(rotationX);
+                const sinX = Math.sin(rotationX);
+                const cosY = Math.cos(rotationY);
+                const sinY = Math.sin(rotationY);
+                
+                // 原始坐标
+                let x = Math.cos(this.angle) * this.distance;
+                let y = this.z;
+                let z = Math.sin(this.angle) * this.distance;
+                
+                // 绕Y轴旋转
+                const x1 = x * cosY - z * sinY;
+                const z1 = x * sinY + z * cosY;
+                
+                // 绕X轴旋转
+                const y1 = y * cosX - z1 * sinX;
+                const z2 = y * sinX + z1 * cosX;
+                
+                // 透视投影
+                const perspective = 1000;
+                const scale = perspective / (perspective + z2) * zoom;
+                
+                return {
+                    x: width / 2 + x1 * scale,
+                    y: height / 2 + y1 * scale,
+                    scale: scale,
+                    z: z2
+                };
+            }
+            
+            draw() {
+                const pos = this.project();
+                
+                if (pos.z < -500) return; // 背面的星星不绘制
+                
+                const alpha = this.brightness * Math.min(1, (pos.z + 500) / 1000);
+                const size = this.size * pos.scale;
+                
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = this.color;
+                ctx.shadowBlur = size * 3;
+                ctx.shadowColor = this.color;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, Math.max(0.5, size), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        // 超新星爆发
+        let supernovas = [];
+        
+        class Supernova {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.particles = [];
+                this.alpha = 1;
+                
+                for (let i = 0; i < 100; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 8 + 2;
+                    this.particles.push({
+                        x: x,
+                        y: y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        size: Math.random() * 3 + 1,
+                        color: ['#fff', '#ff6', '#f66', '#6ff'][Math.floor(Math.random() * 4)]
+                    });
+                }
+            }
+            
+            update() {
+                this.alpha -= 0.01;
+                this.particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.vx *= 0.98;
+                    p.vy *= 0.98;
+                });
+                return this.alpha > 0;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                
+                // 中心光晕
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, 100 * (1 - this.alpha + 0.1));
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(255, 200, 100, 0.3)');
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(this.x - 100, this.y - 100, 200, 200);
+                
+                // 粒子
+                this.particles.forEach(p => {
+                    ctx.fillStyle = p.color;
+                    ctx.shadowBlur = 5;
+                    ctx.shadowColor = p.color;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                
+                ctx.restore();
+            }
+        }
+        
+        // 星云
+        let nebulae = [];
+        
+        class Nebula {
+            constructor() {
+                this.x = (Math.random() - 0.5) * 800;
+                this.y = (Math.random() - 0.5) * 100;
+                this.z = (Math.random() - 0.5) * 800;
+                this.radius = 50 + Math.random() * 100;
+                this.color = this.getNebulaColor();
+            }
+            
+            getNebulaColor() {
+                const colors = [
+                    'rgba(255, 100, 150,',
+                    'rgba(100, 150, 255,',
+                    'rgba(150, 100, 255,',
+                    'rgba(255, 200, 100,',
+                ];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            project() {
+                const cosX = Math.cos(rotationX);
+                const sinX = Math.sin(rotationX);
+                const cosY = Math.cos(rotationY);
+                const sinY = Math.sin(rotationY);
+                
+                let x = this.x;
+                let y = this.y;
+                let z = this.z;
+                
+                const x1 = x * cosY - z * sinY;
+                const z1 = x * sinY + z * cosY;
+                const y1 = y * cosX - z1 * sinX;
+                const z2 = y * sinX + z1 * cosX;
+                
+                const perspective = 1000;
+                const scale = perspective / (perspective + z2) * zoom;
+                
+                return {
+                    x: width / 2 + x1 * scale,
+                    y: height / 2 + y1 * scale,
+                    scale: scale,
+                    z: z2
+                };
+            }
+            
+            draw() {
+                const pos = this.project();
+                if (pos.z < -500) return;
+                
+                const alpha = Math.min(0.15, (pos.z + 500) / 3000);
+                const radius = this.radius * pos.scale;
+                
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                
+                const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius);
+                gradient.addColorStop(0, this.color + '0.5)');
+                gradient.addColorStop(0.5, this.color + '0.2)');
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        function init() {
+            resize();
+            
+            // 创建螺旋臂上的星星
+            const starCount = 3000;
+            for (let i = 0; i < starCount; i++) {
+                const armIndex = Math.floor(Math.random() * 4);
+                const distance = 50 + Math.random() * 350;
+                stars.push(new Star(armIndex, distance));
+            }
+            
+            // 添加中心密集的星星
+            for (let i = 0; i < 500; i++) {
+                const armIndex = Math.floor(Math.random() * 4);
+                const distance = Math.random() * 80;
+                stars.push(new Star(armIndex, distance));
+            }
+            
+            // 创建星云
+            for (let i = 0; i < 10; i++) {
+                nebulae.push(new Nebula());
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        function drawBackground() {
+            // 深空背景
+            ctx.fillStyle = '#000005';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 银河核心光晕
+            const gradient = ctx.createRadialGradient(
+                width / 2, height / 2, 0,
+                width / 2, height / 2, 300 * zoom
+            );
+            gradient.addColorStop(0, 'rgba(255, 240, 200, 0.1)');
+            gradient.addColorStop(0.3, 'rgba(255, 200, 150, 0.05)');
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function draw() {
+            drawBackground();
+            
+            // 更新旋转角度
+            const targetRotX = (mouseY - height / 2) * 0.0005;
+            const targetRotY = (mouseX - width / 2) * 0.0005;
+            rotationX += (targetRotX - rotationX) * 0.05;
+            rotationY += (targetRotY - rotationY) * 0.05;
+            
+            // 自动旋转
+            rotationY += 0.001;
+            
+            // 绘制星云
+            nebulae.forEach(n => n.draw());
+            
+            // 更新和绘制星星（按z排序）
+            stars.forEach(s => s.update());
+            stars.sort((a, b) => b.project().z - a.project().z);
+            stars.forEach(s => s.draw());
+            
+            // 更新和绘制超新星
+            supernovas = supernovas.filter(s => {
+                s.draw();
+                return s.update();
+            });
+            
+            time += 0.016;
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', resize);
+        
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        window.addEventListener('click', (e) => {
+            supernovas.push(new Supernova(e.clientX, e.clientY));
+        });
+        
+        window.addEventListener('wheel', (e) => {
+            zoom += e.deltaY > 0 ? -0.1 : 0.1;
+            zoom = Math.max(0.5, Math.min(3, zoom));
+        });
+        
+        // 触摸支持
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+        
+        window.addEventListener('touchstart', (e) => {
+            supernovas.push(new Supernova(e.touches[0].clientX, e.touches[0].clientY));
+        });
+        
+        init();
+        draw();
+    </script>
+</body>
+</html>

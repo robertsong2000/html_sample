@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>流体水墨 | Fluid Ink</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #0a0a0f;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 8px;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fluid"></canvas>
+    <div class="title">Fluid Ink</div>
+    <div class="info">点击/拖动添加墨水 | 滚轮调整大小 | 双击切换颜色</div>
+    
+    <script>
+        const canvas = document.getElementById('fluid');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let brushSize = 50;
+        let colorScheme = 0;
+        let time = 0;
+        
+        const colorSchemes = [
+            ['#1a1a2e', '#16213e', '#0f3460', '#e94560'],  // 深蓝红
+            ['#0d0d0d', '#1a1a1a', '#333333', '#ffffff'],  // 黑白
+            ['#1a0a2e', '#2d1b4e', '#4a2c6e', '#f39c12'],  // 紫金
+            ['#0a1a1a', '#1a3a3a', '#2a5a5a', '#1abc9c'],  // 青绿
+            ['#1a1a0a', '#3a3a1a', '#5a5a2a', '#f1c40f'],  // 金黄
+        ];
+        
+        // 墨水粒子
+        let particles = [];
+        
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.originX = x;
+                this.originY = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.size = Math.random() * 20 + 10;
+                this.color = color;
+                this.alpha = 0.8 + Math.random() * 0.2;
+                this.life = 1;
+                this.decay = 0.002 + Math.random() * 0.003;
+            }
+            
+            update() {
+                // 流体运动
+                const noise1 = Math.sin(this.x * 0.01 + time) * 0.5;
+                const noise2 = Math.cos(this.y * 0.01 + time * 0.7) * 0.5;
+                
+                this.vx += noise1 * 0.1;
+                this.vy += noise2 * 0.1;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 阻尼
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                
+                // 生命衰减
+                this.life -= this.decay;
+                this.alpha = this.life * 0.8;
+                
+                // 扩散
+                this.size += 0.1;
+                
+                return this.life > 0;
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size
+                );
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(0.5, this.color + '80');
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        // 墨迹痕迹
+        let trails = [];
+        
+        class Trail {
+            constructor(x, y, size, color) {
+                this.points = [{ x, y, size, alpha: 0.6 }];
+                this.color = color;
+                this.maxPoints = 50;
+            }
+            
+            addPoint(x, y, size) {
+                this.points.push({ x, y, size, alpha: 0.6 });
+                if (this.points.length > this.maxPoints) {
+                    this.points.shift();
+                }
+            }
+            
+            update() {
+                this.points.forEach(p => {
+                    p.alpha -= 0.005;
+                    p.size += 0.2;
+                });
+                this.points = this.points.filter(p => p.alpha > 0);
+                return this.points.length > 0;
+            }
+            
+            draw() {
+                if (this.points.length < 2) return;
+                
+                ctx.save();
+                
+                for (let i = 1; i < this.points.length; i++) {
+                    const p1 = this.points[i - 1];
+                    const p2 = this.points[i];
+                    
+                    ctx.globalAlpha = p2.alpha * 0.5;
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = p2.size;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.stroke();
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        let currentTrail = null;
+        let isDrawing = false;
+        
+        function getColor() {
+            const colors = colorSchemes[colorScheme];
+            return colors[3]; // 返回强调色
+        }
+        
+        function addInk(x, y, amount = 10) {
+            const color = getColor();
+            
+            for (let i = 0; i < amount; i++) {
+                const offsetX = (Math.random() - 0.5) * brushSize;
+                const offsetY = (Math.random() - 0.5) * brushSize;
+                particles.push(new Particle(x + offsetX, y + offsetY, color));
+            }
+        }
+        
+        function init() {
+            resize();
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        function draw() {
+            // 淡出背景
+            const colors = colorSchemes[colorScheme];
+            ctx.fillStyle = colors[0] + '15';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新和绘制痕迹
+            trails = trails.filter(t => {
+                t.draw();
+                return t.update();
+            });
+            
+            // 更新和绘制粒子
+            particles = particles.filter(p => {
+                p.draw();
+                return p.update();
+            });
+            
+            // 限制粒子数量
+            if (particles.length > 500) {
+                particles = particles.slice(-500);
+            }
+            
+            time += 0.016;
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', resize);
+        
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            currentTrail = new Trail(e.clientX, e.clientY, brushSize / 3, getColor());
+            trails.push(currentTrail);
+            addInk(e.clientX, e.clientY, 20);
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing && currentTrail) {
+                currentTrail.addPoint(e.clientX, e.clientY, brushSize / 3);
+                addInk(e.clientX, e.clientY, 5);
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+            currentTrail = null;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDrawing = false;
+            currentTrail = null;
+        });
+        
+        canvas.addEventListener('dblclick', () => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            
+            // 清除背景
+            const colors = colorSchemes[colorScheme];
+            ctx.fillStyle = colors[0];
+            ctx.fillRect(0, 0, width, height);
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            brushSize += e.deltaY > 0 ? -5 : 5;
+            brushSize = Math.max(10, Math.min(150, brushSize));
+        }, { passive: false });
+        
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            isDrawing = true;
+            currentTrail = new Trail(touch.clientX, touch.clientY, brushSize / 3, getColor());
+            trails.push(currentTrail);
+            addInk(touch.clientX, touch.clientY, 20);
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDrawing && currentTrail) {
+                const touch = e.touches[0];
+                currentTrail.addPoint(touch.clientX, touch.clientY, brushSize / 3);
+                addInk(touch.clientX, touch.clientY, 5);
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', () => {
+            isDrawing = false;
+            currentTrail = null;
+        });
+        
+        // 键盘控制
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'c' || e.key === 'C') {
+                colorScheme = (colorScheme + 1) % colorSchemes.length;
+                const colors = colorSchemes[colorScheme];
+                ctx.fillStyle = colors[0];
+                ctx.fillRect(0, 0, width, height);
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                particles = [];
+                trails = [];
+                const colors = colorSchemes[colorScheme];
+                ctx.fillStyle = colors[0];
+                ctx.fillRect(0, 0, width, height);
+            }
+        });
+        
+        init();
+        draw();
+    </script>
+</body>
+</html>

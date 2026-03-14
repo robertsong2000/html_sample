@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>霓虹网格 | Neon Grid</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 0, 255, 0.9);
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 
+                0 0 20px rgba(255, 0, 255, 0.8),
+                0px 0.8),
+                0px 0.5);
+            font-size: 48px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% {
+                opacity: 0.8;
+            }
+        }
+        
+        .controls button {
+            background: transparent;
+            border: 2px solid #00ffff;
+            color: #00ffff;
+            padding: 10px 15px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
+        }
+        
+        .controls button:hover {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="neonGrid"></canvas>
+    <div class="controls">
+        <button id="modeBtn">Bars</button>
+        <button id="colorBtn">Color</button>
+    </div>
+    <div class="info">点击切换模式 | 移动鼠标控制网格 | 滚轮调整密度</div>
+    
+    <script>
+        const canvas = document.getElementById('neonGrid');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = width / 2, mouseY = height / 2;
+        let speed = 1;
+        let mode = 0; // 0: bars, 1: wave形, 2: 粒子网格
+        const colorSchemes = [
+            { bg: '#000011', grid: '#00ffff', beam: '#ff00ff', accent: '#00ffff' },
+            { bg: '#001a1a', grid: '#00ff88', beam: '#00ff88', accent: '#00ffff' },
+            { bg: '#1a0a2a', grid: '#ff6b6b', beam: '#ff6b6b', accent: '#ff9ff3' },
+            { bg: '#2a1a2a', grid: '#a55eea', beam: '#a55eea', accent: '#6c5ce7' },
+        ];
+        
+        // 稡拟音频数据
+        const barCount = 64;
+        let targetAudioData = [];
+        
+        function generateAudioData() {
+            // 生成低频
+            for (let i = 0; i < barCount; i++) {
+                // 騡拟音频数据
+                const bass = Math.sin(time * 2) * 0.5 + 0.5;
+                // 中频
+                const mid = Math.sin(time * 3 + i * 0.3) * 0.3;
+                // 高频
+                const high = Math.sin(time * 5 + i * 0.2) * 0.2;
+                
+                value += (Math.random() - 0.5) * 0.1;
+                value = Math.max(0.05, Math.min(1, 0));
+                
+                return value;
+            });
+        }
+        
+        // 限制粒子数量
+        if (particles.length > 300) {
+            particles = particles.slice(0, particles.length - 10);
+        }
+    }
+    
+    // 事件监听
+    window.addEventListener('resize', resize);
+        }
+        
+        // 绘制背景网格
+        function drawGrid() {
+            ctx.fillStyle = colorSchemes[colorScheme].bg;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制网格线
+            const gridSpacing = 40;
+            const halfHeight = height - gridSpacing
+            
+            for (let y = 0; y < halfHeight; y += gridSpacing)
+                ctx.lineTo(x, x + gridSpacing, y - gridSpacing, y, x + 2, y)
+                ctx.lineTo(x, x - gridSpacing, y - 1)
+            ctx.lineTo(x, 0)
+            ctx.stroke()
+            
+            // 鼚圆点
+            for (let i = 0; i < bars.length; i++) {
+                const bar = bars[i];
+                const alpha = audioData[i] * 0.6;
+                bar.alpha = 0.6
+                bar.height = 2.5 + gridSpacing * 0.5);
+                ctx.lineTo(x, y)
+                ctx.lineTo(x - gridSpacing * 0.5, y - gridSpacing * 0.5)
+                ctx.lineTo(x, y)
+                ctx.lineTo(x - gridSpacing * 0.5, y - gridSpacing * 0.5)
+                ctx.stroke()
+                
+                // 发光效果
+                ctx.globalAlpha = 0.8;
+                bar.glow = ctx.createRadialGradient(0, 0, width, height);
+                glow.addColorStop(0, colors.ring[0])
+                gradient.addColorStop(1, colors.ring[1])
+                ctx.fillStyle = glow
+                ctx.fillRect(0, 0, width, height)
+            }
+        }
+        
+        // 錊标
+        function updateClock() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const day = now.getDate();
+            const dayOfWeek = days[now.getDay()];
+            
+            document.getElementById('time').textContent = `${hours}:${minutes}:${seconds}`
+            document.getElementById('date').textContent = `${year}年${month}月${day}日 ${date}日日期: ${day}日`)
+`;
+            document.getElementById('date').textContent = fullDate;
+        }
+        
+        init()
+        draw()
+    </script>
+</body>
+</html>

@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>银河系 | Galaxy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: none;
+        }
+        
+        .cursor {
+            position: fixed;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease, border-color 0.2s ease;
+            box-shadow: 0 0 15px rgba(150, 200, 255, 0.5);
+        }
+        
+        .cursor.active {
+            transform: translate(-50%, -50%) scale(1.5);
+            border-color: #ffd700;
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.8);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(100, 150, 255, 0.5);
+            text-align: center;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 15px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 30px rgba(150, 200, 255, 0.8);
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: rgba(200, 220, 255, 0.6);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 8px;
+            }
+            .info {
+                font-size: 12px;
+            }
+            .cursor {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">银河系</div>
+    <canvas id="galaxy"></canvas>
+    <div class="cursor" id="cursor"></div>
+    <div class="stats">
+        <div>恒星: <span id="starCount">0</span></div>
+        <div>星云: <span id="nebulaCount">0</span></div>
+        <div>旋转角度: <span id="rotation">0</span>°</div>
+    </div>
+    <div class="info">移动鼠标旋转银河 · 点击/拖动创建星云</div>
+    
+    <script>
+        const canvas = document.getElementById('galaxy');
+        const ctx = canvas.getContext('2d');
+        const cursor = document.getElementById('cursor');
+        const starCountEl = document.getElementById('starCount');
+        const nebulaCountEl = document.getElementById('nebulaCount');
+        const rotationEl = document.getElementById('rotation');
+        
+        let width, height, centerX, centerY;
+        let stars = [];
+        let nebulae = [];
+        let dust = [];
+        let mouseX = 0, mouseY = 0;
+        let targetRotationX = 0, targetRotationY = 0;
+        let rotationX = 0, rotationY = 0;
+        let isMouseDown = false;
+        let time = 0;
+        
+        // 颜色配置
+        const starColors = [
+            '#ffffff', '#ffffcc', '#ffff99', // 白/黄
+            '#aaccff', '#88aaff', '#6699ff', // 蓝
+            '#ffcccc', '#ff9999', '#ff6666', // 红
+            '#ccffff', '#99ffff',            // 青
+        ];
+        
+        const nebulaColors = [
+            'rgba(100, 50, 150, 0.15)',   // 紫色
+            'rgba(50, 100, 200, 0.15)',   // 蓝色
+            'rgba(200, 100, 50, 0.12)',   // 橙色
+            'rgba(150, 50, 100, 0.12)',   // 粉色
+            'rgba(50, 150, 100, 0.1)',    // 青绿
+        ];
+        
+        // 恒星类
+        class Star {
+            constructor(armIndex, posInArm) {
+                this.armIndex = armIndex;
+                this.posInArm = posInArm;
+                
+                // 螺旋臂参数
+                const armAngle = (armIndex / 4) * Math.PI * 2;
+                const distance = posInArm * (0.5 + Math.random() * 0.5);
+                const spiralAngle = armAngle + distance * 0.5 + (Math.random() - 0.5) * 0.5;
+                
+                this.baseX = Math.cos(spiralAngle) * distance;
+                this.baseY = Math.sin(spiralAngle) * distance;
+                this.z = (Math.random() - 0.5) * 0.3;
+                
+                this.size = Math.random() * 2 + 0.5;
+                this.color = starColors[Math.floor(Math.random() * starColors.length)];
+                this.twinkleSpeed = Math.random() * 0.05 + 0.02;
+                this.twinkleOffset = Math.random() * Math.PI * 2;
+                
+                // 核心区域的星星更密集更亮
+                const distFromCenter = Math.hypot(this.baseX, this.baseY);
+                if (distFromCenter < 0.3) {
+                    this.size *= 1.5;
+                    this.brightness = 1.2;
+                } else {
+                    this.brightness = 1;
+                }
+            }
+            
+            project(scale) {
+                // 应用旋转变换
+                const cosX = Math.cos(rotationX);
+                const sinX = Math.sin(rotationX);
+                const cosY = Math.cos(rotationY);
+                const sinY = Math.sin(rotationY);
+                
+                let x = this.baseX;
+                let y = this.baseY;
+                let z = this.z;
+                
+                // Y轴旋转
+                const x1 = x * cosY - z * sinY;
+                const z1 = x * sinY + z * cosY;
+                
+                // X轴旋转
+                const y2 = y * cosX - z1 * sinX;
+                const z2 = y * sinX + z1 * cosX;
+                
+                // 透视投影
+                const perspective = 1 + z2 * 0.5;
+                
+                return {
+                    x: centerX + x1 * scale * perspective,
+                    y: centerY + y2 * scale * perspective,
+                    scale: perspective,
+                    z: z2
+                };
+            }
+            
+            draw(scale) {
+                const pos = this.project(scale);
+                
+                // 背面剔除
+                if (pos.z > 0.5) return;
+                
+                const twinkle = 0.7 + Math.sin(time * this.twinkleSpeed + this.twinkleOffset) * 0.3;
+                const alpha = twinkle * this.brightness * (1 - pos.z);
+                const size = this.size * pos.scale;
+                
+                if (alpha <= 0 || size <= 0) return;
+                
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${alpha})`).replace('rgb', 'rgba').replace('#', '');
+                
+                // 处理十六进制颜色
+                if (this.color.startsWith('#')) {
+                    const r = parseInt(this.color.slice(1, 3), 16);
+                    const g = parseInt(this.color.slice(3, 5), 16);
+                    const b = parseInt(this.color.slice(5, 7), 16);
+                    ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                }
+                
+                ctx.fill();
+                
+                // 亮星光晕
+                if (this.size > 1.5 && alpha > 0.5) {
+                    ctx.beginPath();
+                    ctx.arc(pos.x, pos.y, size * 2, 0, Math.PI * 2);
+                    const gradient = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, size * 2);
+                    gradient.addColorStop(0, ctx.fillStyle);
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.fillStyle = gradient;
+                    ctx.fill();
+                }
+            }
+        }
+        
+        // 星云类
+        class Nebula {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.size = 50 + Math.random() * 100;
+                this.color = nebulaColors[Math.floor(Math.random() * nebulaColors.length)];
+                this.life = 1;
+                this.decay = 0.003 + Math.random() * 0.002;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+            }
+            
+            update() {
+                this.life -= this.decay;
+                this.x += this.vx;
+                this.y += this.vy;
+                this.size += 0.5;
+            }
+            
+            draw() {
+                if (this.life <= 0) return;
+                
+                const alpha = this.life * 0.5;
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size
+                );
+                
+                // 解析颜色并应用透明度
+                const colorMatch = this.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                if (colorMatch) {
+                    const [, r, g, b] = colorMatch;
+                    gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${alpha})`);
+                    gradient.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${alpha * 0.5})`);
+                    gradient.addColorStop(1, 'transparent');
+                }
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        // 星尘粒子
+        class Dust {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * Math.min(width, height) * 0.6;
+                this.x = centerX + Math.cos(angle) * distance;
+                this.y = centerY + Math.sin(angle) * distance;
+                this.size = Math.random() * 1 + 0.3;
+                this.alpha = Math.random() * 0.3 + 0.1;
+                this.speed = Math.random() * 0.5 + 0.2;
+                this.angle = Math.atan2(this.y - centerY, this.x - centerX);
+            }
+            
+            update() {
+                // 绕中心旋转
+                this.angle += this.speed * 0.001;
+                const dist = Math.hypot(this.x - centerX, this.y - centerY);
+                this.x = centerX + Math.cos(this.angle) * dist;
+                this.y = centerY + Math.sin(this.angle) * dist;
+                
+                // 鼠标吸引
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const distMouse = Math.hypot(dx, dy);
+                if (distMouse < 150 && distMouse > 0) {
+                    this.x += dx / distMouse * 0.5;
+                    this.y += dy / distMouse * 0.5;
+                }
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200, 220, 255, ${this.alpha})`;
+                ctx.fill();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function initStars() {
+            stars = [];
+            const starCount = 3000;
+            const arms = 4;
+            const starsPerArm = Math.floor(starCount / arms);
+            
+            for (let arm = 0; arm < arms; arm++) {
+                for (let i = 0; i < starsPerArm; i++) {
+                    stars.push(new Star(arm, i / starsPerArm));
+                }
+            }
+            
+            // 添加核心区域的额外星星
+            for (let i = 0; i < 500; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 0.2;
+                const star = new Star(0, distance);
+                star.baseX = Math.cos(angle) * distance;
+                star.baseY = Math.sin(angle) * distance;
+                star.size *= 1.2;
+                stars.push(star);
+            }
+            
+            starCountEl.textContent = stars.length;
+        }
+        
+        function initDust() {
+            dust = [];
+            const dustCount = 200;
+            for (let i = 0; i < dustCount; i++) {
+                dust.push(new Dust());
+            }
+        }
+        
+        function drawCore(scale) {
+            // 银河核心发光
+            const coreSize = 80 * scale;
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, coreSize
+            );
+            gradient.addColorStop(0, 'rgba(255, 250, 220, 0.9)');
+            gradient.addColorStop(0.2, 'rgba(255, 220, 150, 0.6)');
+            gradient.addColorStop(0.5, 'rgba(200, 150, 100, 0.3)');
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coreSize, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        function drawSpiralArms(scale) {
+            ctx.strokeStyle = 'rgba(100, 150, 200, 0.1)';
+            ctx.lineWidth = 30 * scale;
+            
+            for (let arm = 0; arm < 4; arm++) {
+                ctx.beginPath();
+                const armAngle = (arm / 4) * Math.PI * 2;
+                
+                for (let i = 0; i < 100; i++) {
+                    const t = i / 100;
+                    const distance = t * Math.min(width, height) * 0.45;
+                    const angle = armAngle + t * 2;
+                    
+                    // 应用旋转
+                    const cosY = Math.cos(rotationY);
+                    const sinY = Math.sin(rotationY);
+                    const x = Math.cos(angle) * distance;
+                    const z = Math.sin(angle) * distance * 0.1;
+                    const x1 = x * cosY - z * sinY;
+                    
+                    const screenX = centerX + x1 * scale;
+                    const screenY = centerY + Math.sin(angle) * distance * Math.cos(rotationX) * scale;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(screenX, screenY);
+                    } else {
+                        ctx.lineTo(screenX, screenY);
+                    }
+                }
+                ctx.stroke();
+            }
+        }
+        
+        function createNebula(x, y) {
+            const count = 3 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < count; i++) {
+                nebulae.push(new Nebula(
+                    x + (Math.random() - 0.5) * 50,
+                    y + (Math.random() - 0.5) * 50
+                ));
+            }
+        }
+        
+        function animate() {
+            // 清除画布
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 平滑旋转
+            rotationX += (targetRotationX - rotationX) * 0.05;
+            rotationY += (targetRotationY - rotationY) * 0.05;
+            
+            // 自动缓慢旋转
+            targetRotationY += 0.001;
+            
+            const scale = Math.min(width, height) * 0.4;
+            
+            // 绘制螺旋臂轮廓
+            drawSpiralArms(scale);
+            
+            // 更新和绘制星尘
+            dust.forEach(d => {
+                d.update();
+                d.draw();
+            });
+            
+            // 绘制银河核心
+            drawCore(scale);
+            
+            // 按Z轴排序并绘制星星
+            stars.sort((a, b) => {
+                const projA = a.project(scale);
+                const projB = b.project(scale);
+                return projA.z - projB.z;
+            });
+            
+            stars.forEach(star => star.draw(scale));
+            
+            // 更新和绘制星云
+            for (let i = nebulae.length - 1; i >= 0; i--) {
+                nebulae[i].update();
+                nebulae[i].draw();
+                if (nebulae[i].isDead()) {
+                    nebulae.splice(i, 1);
+                }
+            }
+            
+            nebulaCountEl.textContent = nebulae.length;
+            rotationEl.textContent = Math.round((rotationY * 180 / Math.PI) % 360);
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            cursor.style.left = mouseX + 'px';
+            cursor.style.top = mouseY + 'px';
+            
+            // 根据鼠标位置计算目标旋转角度
+            targetRotationX = ((mouseY - centerY) / height) * 0.5;
+            targetRotationY += ((mouseX - centerX) / width) * 0.002;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+                
+                targetRotationX = ((mouseY - centerY) / height) * 0.5;
+                targetRotationY += ((mouseX - centerX) / width) * 0.002;
+            }
+        }
+        
+        function handleMouseDown(e) {
+            isMouseDown = true;
+            cursor.classList.add('active');
+            createNebula(e.clientX, e.clientY);
+        }
+        
+        function handleMouseUp() {
+            isMouseDown = false;
+            cursor.classList.remove('active');
+        }
+        
+        function handleTouchStart(e) {
+            if (e.touches.length > 0) {
+                createNebula(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initStars();
+            initDust();
+            
+            window.addEventListener('resize', () => {
+                resize();
+                initDust();
+            });
+            
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('mouseleave', handleMouseUp);
+            
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+                const scale = Math.min(width, height) * 0.4;
+                drawCore(scale);
+                stars.forEach(star => star.draw(scale));
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

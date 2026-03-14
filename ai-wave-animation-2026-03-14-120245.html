@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>波浪动画 | Wave Animation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Arial', sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 28px;
+            font-weight: 300;
+            letter-spacing: 6px;
+            text-transform: uppercase;
+            pointer-events: none;
+            z-index: 10;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="waves"></canvas>
+    <div class="title">Ocean Waves</div>
+    <div class="info">移动鼠标影响波浪 | 点击切换配色 | 滚轮调整波浪强度</div>
+    
+    <script>
+        const canvas = document.getElementById('waves');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let waveIntensity = 1;
+        let colorScheme = 0;
+        let time = 0;
+        
+        const colorSchemes = [
+            { sky: ['#1a1a2e', '#16213e', '#0f3460'], water: ['#00d4ff', '#0099cc', '#006699'], foam: '#ffffff' },
+            { sky: ['#2c1810', '#4a2c17', '#8b4513'], water: ['#ff6b35', '#f7931e', '#ffd700'], foam: '#fff8dc' },
+            { sky: ['#1a0a2e', '#2d1b4e', '#4a2c6e'], water: ['#9b59b6', '#8e44ad', '#6c3483'], foam: '#e8daef' },
+            { sky: ['#0a1a0a', '#1a3a1a', '#2a5a2a'], water: ['#27ae60', '#2ecc71', '#58d68d'], foam: '#d5f5e3' },
+        ];
+        
+        // 波浪层
+        class WaveLayer {
+            constructor(baseY, amplitude, frequency, speed, color, alpha) {
+                this.baseY = baseY;
+                this.amplitude = amplitude;
+                this.frequency = frequency;
+                this.speed = speed;
+                this.color = color;
+                this.alpha = alpha;
+                this.phase = Math.random() * Math.PI * 2;
+                this.points = [];
+            }
+            
+            update() {
+                this.phase += this.speed;
+            }
+            
+            draw() {
+                const colors = colorSchemes[colorScheme];
+                
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                
+                // 创建波浪路径
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                
+                for (let x = 0; x <= width; x += 5) {
+                    // 多重正弦波叠加
+                    let y = this.baseY;
+                    
+                    // 基础波浪
+                    y += Math.sin(x * this.frequency + this.phase) * this.amplitude * waveIntensity;
+                    
+                    // 次级波浪
+                    y += Math.sin(x * this.frequency * 2.5 + this.phase * 1.5) * this.amplitude * 0.3 * waveIntensity;
+                    
+                    // 第三级波浪
+                    y += Math.sin(x * this.frequency * 0.5 + this.phase * 0.7) * this.amplitude * 0.5 * waveIntensity;
+                    
+                    // 鼠标影响
+                    const dx = x - mouseX;
+                    const dy = y - mouseY;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 200) {
+                        const influence = (200 - dist) / 200;
+                        y += Math.sin(time * 5 + x * 0.02) * influence * 30 * waveIntensity;
+                    }
+                    
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.lineTo(width, height);
+                ctx.closePath();
+                
+                // 渐变填充
+                const gradient = ctx.createLinearGradient(0, this.baseY - this.amplitude, 0, height);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, colors.water[2]);
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 顶部高光
+                ctx.strokeStyle = colors.foam;
+                ctx.lineWidth = 2;
+                ctx.globalAlpha = this.alpha * 0.3;
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
+        
+        // 泡沫粒子
+        class Foam {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = height * 0.5 + Math.random() * height * 0.3;
+                this.size = Math.random() * 4 + 1;
+                this.speedX = (Math.random() - 0.5) * 2;
+                this.speedY = -Math.random() * 0.5 - 0.2;
+                this.alpha = Math.random() * 0.5 + 0.3;
+                this.life = 100 + Math.random() * 100;
+            }
+            
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life--;
+                this.alpha = (this.life / 200) * 0.5;
+                
+                if (this.life <= 0 || this.y < 0) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                const colors = colorSchemes[colorScheme];
+                
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = colors.foam;
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = colors.foam;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        
+        // 海鸥
+        class Seagull {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = -50;
+                this.y = 50 + Math.random() * 150;
+                this.speed = 1 + Math.random() * 2;
+                this.wingPhase = Math.random() * Math.PI * 2;
+                this.wingSpeed = 0.2 + Math.random() * 0.1;
+                this.size = 10 + Math.random() * 5;
+            }
+            
+            update() {
+                this.x += this.speed;
+                this.wingPhase += this.wingSpeed;
+                
+                // 上下浮动
+                this.y += Math.sin(this.wingPhase * 0.5) * 0.5;
+                
+                if (this.x > width + 50) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                const wingOffset = Math.sin(this.wingPhase) * 5;
+                
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                
+                // 身体
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, this.size, this.size * 0.3, 0, 0, Math.PI * 2);
+                ctx.stroke();
+                
+                // 左翅膀
+                ctx.beginPath();
+                ctx.moveTo(this.x - this.size * 0.3, this.y);
+                ctx.quadraticCurveTo(
+                    this.x - this.size, this.y - wingOffset - 5,
+                    this.x - this.size * 1.5, this.y - wingOffset
+                );
+                ctx.stroke();
+                
+                // 右翅膀
+                ctx.beginPath();
+                ctx.moveTo(this.x + this.size * 0.3, this.y);
+                ctx.quadraticCurveTo(
+                    this.x + this.size, this.y - wingOffset - 5,
+                    this.x + this.size * 1.5, this.y - wingOffset
+                );
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        }
+        
+        // 云朵
+        class Cloud {
+            constructor(x) {
+                this.x = x !== undefined ? x : Math.random() * width;
+                this.y = 30 + Math.random() * 100;
+                this.speed = 0.2 + Math.random() * 0.3;
+                this.size = 30 + Math.random() * 40;
+                this.alpha = 0.3 + Math.random() * 0.3;
+            }
+            
+            update() {
+                this.x += this.speed;
+                if (this.x > width + 100) {
+                    this.x = -100;
+                    this.y = 30 + Math.random() * 100;
+                }
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.fillStyle = '#fff';
+                
+                // 云朵形状
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.5, 0, Math.PI * 2);
+                ctx.arc(this.x + this.size * 0.4, this.y - this.size * 0.2, this.size * 0.4, 0, Math.PI * 2);
+                ctx.arc(this.x + this.size * 0.8, this.y, this.size * 0.5, 0, Math.PI * 2);
+                ctx.arc(this.x + this.size * 0.4, this.y + this.size * 0.15, this.size * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        let waves = [];
+        let foams = [];
+        let seagulls = [];
+        let clouds = [];
+        
+        function init() {
+            resize();
+            
+            // 创建波浪层（从后到前）
+            const colors = colorSchemes[colorScheme];
+            waves.push(new WaveLayer(height * 0.45, 20, 0.008, 0.015, colors.water[2], 0.4));
+            waves.push(new WaveLayer(height * 0.50, 25, 0.010, 0.020, colors.water[1], 0.5));
+            waves.push(new WaveLayer(height * 0.55, 30, 0.012, 0.025, colors.water[0], 0.6));
+            waves.push(new WaveLayer(height * 0.60, 35, 0.015, 0.030, colors.water[0], 0.7));
+            waves.push(new WaveLayer(height * 0.65, 40, 0.018, 0.035, colors.water[0], 0.8));
+            
+            // 创建泡沫
+            for (let i = 0; i < 50; i++) {
+                foams.push(new Foam());
+            }
+            
+            // 创建海鸥
+            for (let i = 0; i < 3; i++) {
+                const gull = new Seagull();
+                gull.x = Math.random() * width;
+                seagulls.push(gull);
+            }
+            
+            // 创建云朵
+            for (let i = 0; i < 5; i++) {
+                clouds.push(new Cloud());
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            // 更新波浪基准位置
+            if (waves.length > 0) {
+                waves[0].baseY = height * 0.45;
+                waves[1].baseY = height * 0.50;
+                waves[2].baseY = height * 0.55;
+                waves[3].baseY = height * 0.60;
+                waves[4].baseY = height * 0.65;
+            }
+        }
+        
+        function drawSky() {
+            const colors = colorSchemes[colorScheme];
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, height * 0.6);
+            gradient.addColorStop(0, colors.sky[0]);
+            gradient.addColorStop(0.5, colors.sky[1]);
+            gradient.addColorStop(1, colors.sky[2]);
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height * 0.6);
+            
+            // 太阳/月亮
+            ctx.save();
+            const sunX = width * 0.8;
+            const sunY = height * 0.15;
+            
+            const sunGlow = ctx.createRadialGradient(sunX, sunY, 20, sunX, sunY, 100);
+            sunGlow.addColorStop(0, 'rgba(255, 200, 100, 0.8)');
+            sunGlow.addColorStop(0.5, 'rgba(255, 200, 100, 0.2)');
+            sunGlow.addColorStop(1, 'transparent');
+            ctx.fillStyle = sunGlow;
+            ctx.fillRect(sunX - 100, sunY - 100, 200, 200);
+            
+            ctx.fillStyle = 'rgba(255, 220, 150, 0.9)';
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = 'rgba(255, 200, 100, 0.8)';
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, 30, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        
+        function draw() {
+            // 绘制天空
+            drawSky();
+            
+            // 绘制云朵
+            clouds.forEach(cloud => {
+                cloud.update();
+                cloud.draw();
+            });
+            
+            // 绘制海鸥
+            seagulls.forEach(gull => {
+                gull.update();
+                gull.draw();
+            });
+            
+            // 绘制波浪
+            waves.forEach(wave => {
+                wave.update();
+                wave.draw();
+            });
+            
+            // 绘制泡沫
+            foams.forEach(foam => {
+                foam.update();
+                foam.draw();
+            });
+            
+            time += 0.016;
+            
+            requestAnimationFrame(draw);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', resize);
+        
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        window.addEventListener('click', () => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+            
+            // 更新波浪颜色
+            const colors = colorSchemes[colorScheme];
+            waves.forEach((wave, i) => {
+                wave.color = colors.water[Math.min(i, 2)];
+            });
+        });
+        
+        window.addEventListener('wheel', (e) => {
+            waveIntensity += e.deltaY > 0 ? -0.1 : 0.1;
+            waveIntensity = Math.max(0.3, Math.min(2, waveIntensity));
+        });
+        
+        // 触摸支持
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+        
+        window.addEventListener('touchstart', () => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+        });
+        
+        init();
+        draw();
+    </script>
+</body>
+</html>

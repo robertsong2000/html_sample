@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>超空间穿越 | Hyperspace</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 200, 255, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 20px rgba(100, 200, 255, 0.8),
+                0 0 40px rgba(100, 200, 255, 0.4);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(100, 200, 255, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">超空间穿越</div>
+    <canvas id="hyperspace"></canvas>
+    <div class="stats">
+        <div>速度: <span id="speed">1.0</span>x</div>
+        <div>星星: <span id="starCount">0</span></div>
+    </div>
+    <div class="info">移动鼠标控制方向 · 点击加速穿越 · 滚轮调整速度</div>
+    
+    <script>
+        const canvas = document.getElementById('hyperspace');
+        const ctx = canvas.getContext('2d');
+        const speedEl = document.getElementById('speed');
+        const starCountEl = document.getElementById('starCount');
+        
+        let width, height, centerX, centerY;
+        let stars = [];
+        let mouseX = 0, mouseY = 0;
+        let speed = 1;
+        let time = 0;
+        let boostActive = false;
+        let boostTime = 0;
+        
+        // 颜色主题
+        const themes = [
+            { inner: '#00ffff', outer: '#0066ff', name: '蓝色' },
+            { inner: '#ff00ff', outer: '#6600ff', name: '紫色' },
+            { inner: '#00ff88', outer: '#0088ff', name: '青绿' },
+            { inner: '#ffff00', outer: '#ff8800', name: '金色' }
+        ];
+        let currentTheme = 0;
+        
+        // 星星类
+        class Star {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                // 随机角度和距离
+                const angle = Math.random() * Math.PI * 2;
+                const distance = Math.random() * 50 + 10;
+                
+                this.x = Math.cos(angle) * distance;
+                this.y = Math.sin(angle) * distance;
+                this.z = Math.random() * 1500 + 500;
+                this.pz = this.z;
+                
+                // 颜色
+                const theme = themes[currentTheme];
+                this.color = Math.random() > 0.7 ? theme.inner : theme.outer;
+            }
+            
+            update() {
+                // 保存上一帧位置
+                this.pz = this.z;
+                
+                // 向前移动
+                let currentSpeed = speed * (boostActive ? 3 : 1);
+                this.z -= currentSpeed * 15;
+                
+                // 鼠标影响方向
+                const offsetX = (mouseX - centerX) * 0.001;
+                const offsetY = (mouseY - centerY) * 0.001;
+                this.x += offsetX * (1500 - this.z) * 0.01;
+                this.y += offsetY * (1500 - this.z) * 0.01;
+                
+                // 重置
+                if (this.z < 1) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                // 投影到屏幕
+                const sx = (this.x / this.z) * 400 + centerX;
+                const sy = (this.y / this.z) * 400 + centerY;
+                
+                // 上一帧位置
+                const px = (this.x / this.pz) * 400 + centerX;
+                const py = (this.y / this.pz) * 400 + centerY;
+                
+                // 大小基于距离
+                const size = (1 - this.z / 1500) * 4;
+                
+                // 视野外不绘制
+                if (sx < 0 || sx > width || sy < 0 || sy > height) {
+                    this.reset();
+                    return;
+                }
+                
+                // 绘制拖尾
+                ctx.beginPath();
+                ctx.moveTo(px, py);
+                ctx.lineTo(sx, sy);
+                
+                const gradient = ctx.createLinearGradient(px, py, sx, sy);
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(1, this.color);
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = size;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                // 星星头部发光
+                ctx.beginPath();
+                ctx.arc(sx, sy, size * 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = this.color;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            mouseY = height / 2;
+            mouseX = width / 2;
+        }
+        
+        function initStars() {
+            stars = [];
+            const count = 400;
+            
+            for (let i = 0; i < count; i++) {
+                stars.push(new Star());
+            }
+            
+            starCountEl.textContent = count;
+        }
+        
+        function drawTunnel() {
+            // 中心光晕
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.max(width, height) * 0.5
+            );
+            
+            const theme = themes[currentTheme];
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+            gradient.addColorStop(0.2, theme.inner + '20');
+            gradient.addColorStop(0.5, theme.outer + '10');
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 速度线圆环
+            const rings = 5;
+            for (let i = 0; i < rings; i++) {
+                const radius = 50 + i * 80 + (time * speed * (boostActive ? 3 : 1)) % 80;
+                const alpha = 0.1 - i * 0.02;
+                
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(100, 200, 255, ${alpha})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+        
+        function drawVignette() {
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, Math.min(width, height) * 0.3,
+                centerX, centerY, Math.max(width, height) * 0.8
+            );
+            gradient.addColorStop(0, 'transparent');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function boost() {
+            boostActive = true;
+            boostTime = 30;
+        }
+        
+        function cycleTheme() {
+            currentTheme = (currentTheme + 1) % themes.length;
+            stars.forEach(star => {
+                const theme = themes[currentTheme];
+                star.color = Math.random() > 0.7 ? theme.inner : theme.outer;
+            });
+        }
+        
+        function animate() {
+            // 清除画布
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新加速状态
+            if (boostActive) {
+                boostTime--;
+                if (boostTime <= 0) {
+                    boostActive = false;
+                }
+            }
+            
+            // 绘制隧道效果
+            drawTunnel();
+            
+            // 更新和绘制星星
+            stars.forEach(star => {
+                star.update();
+                star.draw();
+            });
+            
+            // 边缘暗角
+            drawVignette();
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleClick() {
+            boost();
+        }
+        
+        function handleDblClick() {
+            cycleTheme();
+        }
+        
+        function handleWheel(e) {
+            e.preventDefault();
+            speed = Math.max(0.2, Math.min(5, speed - e.deltaY * 0.002));
+            speedEl.textContent = speed.toFixed(1);
+        }
+        
+        function handleTouchStart() {
+            boost();
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initStars();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('dblclick', handleDblClick);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            speedEl.textContent = speed.toFixed(1);
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, width, height);
+                drawTunnel();
+                stars.forEach(star => star.draw());
+                drawVignette();
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

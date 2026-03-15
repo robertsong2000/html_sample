@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分形艺术 | Fractal Art</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 10px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 30px rgba(150, 100, 255, 0.8);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(200, 150, 255, 0.6);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 22px;
+                letter-spacing: 5px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">分形艺术</div>
+    <canvas id="fractal"></canvas>
+    <div class="stats">
+        <div>分形类型: <span id="fractalType">树</span></div>
+        <div>迭代深度: <span id="depth">10</span></div>
+    </div>
+    <div class="info">移动鼠标变换分形 · 点击切换类型 · 滚轮调整深度</div>
+    
+    <script>
+        const canvas = document.getElementById('fractal');
+        const ctx = canvas.getContext('2d');
+        const fractalTypeEl = document.getElementById('fractalType');
+        const depthEl = document.getElementById('depth');
+        
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let currentFractal = 0;
+        let maxDepth = 10;
+        
+        const fractalTypes = ['树', '谢尔宾斯基', '科赫雪花', '螺旋'];
+        
+        // 颜色配置
+        const colorSchemes = [
+            { start: '#ff6b6b', end: '#4ecdc4' },
+            { start: '#a855f7', end: '#06b6d4' },
+            { start: '#f97316', end: '#8b5cf6' },
+            { start: '#10b981', end: '#f43f5e' }
+        ];
+        
+        let currentScheme = 0;
+        
+        function lerpColor(color1, color2, t) {
+            const c1 = hexToRgb(color1);
+            const c2 = hexToRgb(color2);
+            
+            return {
+                r: Math.round(c1.r + (c2.r - c1.r) * t),
+                g: Math.round(c1.g + (c2.g - c1.g) * t),
+                b: Math.round(c1.b + (c2.b - c1.b) * t)
+            };
+        }
+        
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 255, g: 255, b: 255 };
+        }
+        
+        function getColor(depth, maxD) {
+            const t = depth / maxD;
+            const scheme = colorSchemes[currentScheme];
+            const color = lerpColor(scheme.start, scheme.end, t);
+            return `rgb(${color.r}, ${color.g}, ${color.b})`;
+        }
+        
+        // 分形树
+        function drawTree(x, y, length, angle, depth) {
+            if (depth === 0 || length < 2) return;
+            
+            const endX = x + Math.cos(angle) * length;
+            const endY = y + Math.sin(angle) * length;
+            
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.strokeStyle = getColor(maxDepth - depth, maxDepth);
+            ctx.lineWidth = Math.max(1, depth * 0.8);
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            
+            // 鼠标影响分支角度
+            const mouseInfluence = (mouseX - centerX) / width * 0.5;
+            const timeInfluence = Math.sin(time * 0.02) * 0.1;
+            
+            const branchAngle = 0.4 + mouseInfluence + timeInfluence;
+            const shrink = 0.7 + (mouseY / height) * 0.15;
+            
+            drawTree(endX, endY, length * shrink, angle - branchAngle, depth - 1);
+            drawTree(endX, endY, length * shrink, angle + branchAngle, depth - 1);
+        }
+        
+        // 谢尔宾斯基三角形
+        function drawSierpinski(x, y, size, depth) {
+            if (depth === 0) {
+                ctx.beginPath();
+                ctx.moveTo(x, y - size);
+                ctx.lineTo(x - size * 0.866, y + size * 0.5);
+                ctx.lineTo(x + size * 0.866, y + size * 0.5);
+                ctx.closePath();
+                ctx.fillStyle = getColor(maxDepth - depth, maxDepth);
+                ctx.fill();
+                return;
+            }
+            
+            const newSize = size / 2;
+            const mouseInfluence = 1 + (mouseX - centerX) / width * 0.1;
+            
+            drawSierpinski(x, y - newSize * mouseInfluence, newSize, depth - 1);
+            drawSierpinski(x - newSize * 0.866 * mouseInfluence, y + newSize * 0.5 * mouseInfluence, newSize, depth - 1);
+            drawSierpinski(x + newSize * 0.866 * mouseInfluence, y + newSize * 0.5 * mouseInfluence, newSize, depth - 1);
+        }
+        
+        // 科赫雪花
+        function drawKochLine(x1, y1, x2, y2, depth) {
+            if (depth === 0) {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = getColor(maxDepth - depth, maxDepth);
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                return;
+            }
+            
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            
+            const x3 = x1 + dx / 3;
+            const y3 = y1 + dy / 3;
+            
+            const x5 = x1 + dx * 2 / 3;
+            const y5 = y1 + dy * 2 / 3;
+            
+            const mouseInfluence = (mouseY - centerY) / height * 0.5;
+            const angle = Math.atan2(dy, dx) - Math.PI / 3 * (1 + mouseInfluence + Math.sin(time * 0.02) * 0.2);
+            const len = Math.sqrt(dx * dx + dy * dy) / 3;
+            
+            const x4 = x3 + Math.cos(angle) * len;
+            const y4 = y3 + Math.sin(angle) * len;
+            
+            drawKochLine(x1, y1, x3, y3, depth - 1);
+            drawKochLine(x3, y3, x4, y4, depth - 1);
+            drawKochLine(x4, y4, x5, y5, depth - 1);
+            drawKochLine(x5, y5, x2, y2, depth - 1);
+        }
+        
+        function drawKochSnowflake(x, y, size, depth) {
+            const angle = Math.PI / 2;
+            const points = [];
+            
+            for (let i = 0; i < 3; i++) {
+                points.push({
+                    x: x + Math.cos(angle + i * Math.PI * 2 / 3) * size,
+                    y: y + Math.sin(angle + i * Math.PI * 2 / 3) * size
+                });
+            }
+            
+            for (let i = 0; i < 3; i++) {
+                const p1 = points[i];
+                const p2 = points[(i + 1) % 3];
+                drawKochLine(p1.x, p1.y, p2.x, p2.y, depth);
+            }
+        }
+        
+        // 螺旋分形
+        function drawSpiral(x, y, radius, angle, depth) {
+            if (depth === 0 || radius < 1) return;
+            
+            const mouseInfluence = (mouseX - centerX) / width * 0.3;
+            const timeInfluence = Math.sin(time * 0.03) * 0.2;
+            
+            // 绘制圆
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.strokeStyle = getColor(maxDepth - depth, maxDepth);
+            ctx.lineWidth = Math.max(1, depth * 0.3);
+            ctx.globalAlpha = 0.7;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            
+            // 递归绘制子螺旋
+            const newRadius = radius * (0.5 + mouseInfluence * 0.1);
+            const distance = radius * (1 + timeInfluence);
+            
+            for (let i = 0; i < 6; i++) {
+                const a = angle + (i / 6) * Math.PI * 2 + time * 0.01;
+                const nx = x + Math.cos(a) * distance;
+                const ny = y + Math.sin(a) * distance;
+                drawSpiral(nx, ny, newRadius, a, depth - 1);
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function drawBackground() {
+            // 深色渐变背景
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, Math.max(width, height) * 0.7);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a0f');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function drawFractal() {
+            const size = Math.min(width, height) * 0.35;
+            
+            switch (currentFractal) {
+                case 0: // 分形树
+                    drawTree(centerX, height * 0.85, size, -Math.PI / 2, maxDepth);
+                    break;
+                case 1: // 谢尔宾斯基
+                    drawSierpinski(centerX, centerY, size, Math.min(maxDepth, 8));
+                    break;
+                case 2: // 科赫雪花
+                    drawKochSnowflake(centerX, centerY, size * 0.8, Math.min(maxDepth, 6));
+                    break;
+                case 3: // 螺旋
+                    drawSpiral(centerX, centerY, size * 0.4, 0, Math.min(maxDepth, 7));
+                    break;
+            }
+        }
+        
+        function cycleFractal() {
+            currentFractal = (currentFractal + 1) % fractalTypes.length;
+            fractalTypeEl.textContent = fractalTypes[currentFractal];
+        }
+        
+        function cycleColors() {
+            currentScheme = (currentScheme + 1) % colorSchemes.length;
+        }
+        
+        function animate() {
+            drawBackground();
+            drawFractal();
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleClick(e) {
+            if (e.detail === 2) {
+                cycleColors();
+            } else {
+                cycleFractal();
+            }
+        }
+        
+        function handleWheel(e) {
+            e.preventDefault();
+            maxDepth = Math.max(3, Math.min(12, maxDepth - Math.sign(e.deltaY)));
+            depthEl.textContent = maxDepth;
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+            
+            depthEl.textContent = maxDepth;
+            fractalTypeEl.textContent = fractalTypes[currentFractal];
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                drawBackground();
+                drawFractal();
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

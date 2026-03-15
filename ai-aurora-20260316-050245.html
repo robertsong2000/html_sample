@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Borealis - 极光</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 50%, #0a0a2a 100%);
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .star {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle var(--duration) ease-in-out infinite;
+        }
+
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(150, 255, 220, 0.8);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 255, 200, 0.5);
+            pointer-events: none;
+            backdrop-filter: blur(5px);
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(100, 255, 200, 0.2);
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(180, 255, 230, 0.9);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 8px;
+            text-shadow: 0 0 30px rgba(100, 255, 200, 0.8);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+                padding: 10px;
+            }
+            .title {
+                font-size: 20px;
+                letter-spacing: 4px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="stars" id="stars"></div>
+    <canvas id="aurora"></canvas>
+    <div class="title">AURORA</div>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 引导极光方向</span>
+        <span>👆 点击/拖动 - 创造能量涟漪</span>
+    </div>
+
+    <script>
+        // Create stars background
+        const starsContainer = document.getElementById('stars');
+        for (let i = 0; i < 100; i++) {
+            const star = document.createElement('div');
+            star.className = 'star';
+            star.style.left = Math.random() * 100 + '%';
+            star.style.top = Math.random() * 60 + '%';
+            const size = Math.random() * 2 + 1;
+            star.style.width = size + 'px';
+            star.style.height = size + 'px';
+            star.style.setProperty('--duration', (Math.random() * 3 + 2) + 's');
+            star.style.animationDelay = Math.random() * 3 + 's';
+            starsContainer.appendChild(star);
+        }
+
+        // Aurora canvas
+        const canvas = document.getElementById('aurora');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Aurora wave parameters
+        class AuroraWave {
+            constructor(baseY, amplitude, frequency, speed, color) {
+                this.baseY = baseY;
+                this.amplitude = amplitude;
+                this.frequency = frequency;
+                this.speed = speed;
+                this.color = color;
+                this.phase = Math.random() * Math.PI * 2;
+                this.opacity = 0.3 + Math.random() * 0.3;
+            }
+
+            update(time, mouseInfluence) {
+                this.phase += this.speed * 0.02;
+                this.currentAmplitude = this.amplitude * (1 + mouseInfluence * 0.5);
+            }
+
+            getY(x, time) {
+                const wave1 = Math.sin(x * this.frequency + this.phase) * this.currentAmplitude;
+                const wave2 = Math.sin(x * this.frequency * 0.5 + this.phase * 1.5) * this.currentAmplitude * 0.5;
+                const wave3 = Math.sin(x * this.frequency * 2 + this.phase * 0.7) * this.currentAmplitude * 0.3;
+                return this.baseY + wave1 + wave2 + wave3;
+            }
+        }
+
+        // Create multiple aurora waves with different colors
+        const waves = [
+            new AuroraWave(canvas.height * 0.3, 80, 0.003, 1, { r: 72, g: 219, b: 155 }),   // Teal
+            new AuroraWave(canvas.height * 0.35, 70, 0.004, 1.2, { r: 64, g: 224, b: 208 }), // Turquoise
+            new AuroraWave(canvas.height * 0.25, 90, 0.0025, 0.8, { r: 0, g: 255, b: 127 }), // Spring Green
+            new AuroraWave(canvas.height * 0.4, 60, 0.005, 1.5, { r: 0, g: 191, b: 255 }),   // Deep Sky Blue
+            new AuroraWave(canvas.height * 0.28, 75, 0.0035, 1.1, { r: 138, g: 43, b: 226 }), // Blue Violet
+        ];
+
+        // Mouse interaction
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let targetMouseX = mouseX;
+        let targetMouseY = mouseY;
+        let mouseInfluence = 0;
+
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+            mouseInfluence = 1;
+        });
+
+        // Ripple effects
+        let ripples = [];
+
+        canvas.addEventListener('click', (e) => {
+            createRipple(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            isDragging = true;
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+
+        let isDragging = false;
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                if (Math.random() > 0.7) {
+                    createRipple(e.clientX, e.clientY, 0.5);
+                }
+            }
+        });
+
+        function createRipple(x, y, strength = 1) {
+            ripples.push({
+                x: x,
+                y: y,
+                radius: 0,
+                maxRadius: 400 * strength,
+                strength: strength,
+                opacity: 1
+            });
+        }
+
+        // Touch support
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            targetMouseX = touch.clientX;
+            targetMouseY = touch.clientY;
+            mouseInfluence = 1;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            createRipple(touch.clientX, touch.clientY);
+        });
+
+        // Time tracking
+        let time = 0;
+
+        // Main animation loop
+        function draw() {
+            time += 0.016;
+
+            // Smooth mouse following
+            mouseX += (targetMouseX - mouseX) * 0.05;
+            mouseY += (targetMouseY - mouseY) * 0.05;
+
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(10, 10, 26, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw ripples
+            ripples = ripples.filter(ripple => {
+                ripple.radius += 6;
+                ripple.opacity *= 0.97;
+
+                // Draw ripple with aurora colors
+                const gradient = ctx.createRadialGradient(
+                    ripple.x, ripple.y, ripple.radius * 0.8,
+                    ripple.x, ripple.y, ripple.radius
+                );
+                gradient.addColorStop(0, 'rgba(0, 255, 200, 0)');
+                gradient.addColorStop(0.5, `rgba(100, 255, 200, ${ripple.opacity * 0.3})`);
+                gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+
+                ctx.beginPath();
+                ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                return ripple.radius < ripple.maxRadius && ripple.opacity > 0.01;
+            });
+
+            // Draw aurora waves
+            waves.forEach((wave, waveIndex) => {
+                wave.update(time, mouseInfluence);
+
+                // Create gradient for this wave
+                const gradient = ctx.createLinearGradient(0, wave.baseY - 150, 0, wave.baseY + 150);
+                const alpha = wave.opacity * (0.5 + mouseInfluence * 0.3);
+                
+                gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+                gradient.addColorStop(0.3, `rgba(${wave.color.r}, ${wave.color.g}, ${wave.color.b}, ${alpha * 0.3})`);
+                gradient.addColorStop(0.5, `rgba(${wave.color.r}, ${wave.color.g}, ${wave.color.b}, ${alpha})`);
+                gradient.addColorStop(0.7, `rgba(${wave.color.r}, ${wave.color.g}, ${wave.color.b}, ${alpha * 0.3})`);
+                gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                // Draw wave as a filled path
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height);
+
+                // Add mouse influence to wave shape
+                for (let x = 0; x <= canvas.width; x += 5) {
+                    let y = wave.getY(x, time);
+                    
+                    // Mouse attraction
+                    const dx = x - mouseX;
+                    const dy = y - mouseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    const influenceRadius = 300;
+                    
+                    if (distance < influenceRadius) {
+                        const influence = (1 - distance / influenceRadius) * 50 * mouseInfluence;
+                        y += (mouseY - y) * influence * 0.01;
+                    }
+
+                    // Ripple distortion
+                    for (const ripple of ripples) {
+                        const rippleDx = x - ripple.x;
+                        const rippleDy = y - ripple.y;
+                        const rippleDist = Math.sqrt(rippleDx * rippleDx + rippleDy * rippleDy);
+                        
+                        if (Math.abs(rippleDist - ripple.radius) < 100) {
+                            const rippleInfluence = (1 - Math.abs(rippleDist - ripple.radius) / 100) * ripple.opacity * 30;
+                            y += Math.sin(rippleDist * 0.05) * rippleInfluence;
+                        }
+                    }
+
+                    ctx.lineTo(x, y);
+                }
+
+                ctx.lineTo(canvas.width, canvas.height);
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Add glow effect
+                ctx.shadowBlur = 30;
+                ctx.shadowColor = `rgba(${wave.color.r}, ${wave.color.g}, ${wave.color.b}, 0.5)`;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            // Add vertical light rays
+            if (mouseInfluence > 0.1) {
+                const rayCount = 5;
+                for (let i = 0; i < rayCount; i++) {
+                    const rayX = mouseX + (Math.random() - 0.5) * 200;
+                    const rayHeight = canvas.height * (0.5 + Math.random() * 0.3);
+                    const rayWidth = 2 + Math.random() * 3;
+                    
+                    const rayGradient = ctx.createLinearGradient(rayX, 0, rayX, rayHeight);
+                    rayGradient.addColorStop(0, 'rgba(100, 255, 200, 0)');
+                    rayGradient.addColorStop(0.3, `rgba(100, 255, 200, ${0.1 * mouseInfluence})`);
+                    rayGradient.addColorStop(0.7, `rgba(100, 255, 200, ${0.05 * mouseInfluence})`);
+                    rayGradient.addColorStop(1, 'rgba(100, 255, 200, 0)');
+
+                    ctx.fillStyle = rayGradient;
+                    ctx.fillRect(rayX - rayWidth / 2, 0, rayWidth, rayHeight);
+                }
+            }
+
+            // Decay mouse influence
+            mouseInfluence *= 0.99;
+
+            requestAnimationFrame(draw);
+        }
+
+        // Start animation
+        draw();
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            waves.forEach((wave, i) => {
+                wave.baseY = canvas.height * (0.25 + i * 0.04);
+            });
+        });
+    </script>
+</body>
+</html>

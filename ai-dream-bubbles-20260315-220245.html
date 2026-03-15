@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>梦幻泡泡 | Dream Bubbles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0a1a2a 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 20px rgba(150, 200, 255, 0.8),
+                0 0 40px rgba(150, 200, 255, 0.4);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(150, 200, 255, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">梦幻泡泡</div>
+    <canvas id="bubbles"></canvas>
+    <div class="stats">
+        <div>泡泡数: <span id="bubbleCount">0</span></div>
+        <div>模式: <span id="mode">漂浮</span></div>
+    </div>
+    <div class="info">移动鼠标推动泡泡 · 点击创建新泡泡 · 双击切换模式</div>
+    
+    <script>
+        const canvas = document.getElementById('bubbles');
+        const ctx = canvas.getContext('2d');
+        const bubbleCountEl = document.getElementById('bubbleCount');
+        const modeEl = document.getElementById('mode');
+        
+        let width, height;
+        let bubbles = [];
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let currentMode = 0;
+        const modes = ['漂浮', '爆炸', '聚合', '波浪'];
+        
+        const maxBubbles = 50;
+        
+        // 泡泡类
+        class Bubble {
+            constructor(x, y) {
+                this.x = x !== undefined ? x : Math.random() * width;
+                this.y = y !== undefined ? y : Math.random() * height;
+                this.radius = 20 + Math.random() * 60;
+                this.baseRadius = this.radius;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -Math.random() * 2 - 0.5;
+                
+                // 彩虹色相
+                this.hue = Math.random() * 360;
+                this.hueSpeed = 0.5 + Math.random() * 0.5;
+                
+                // 光泽效果参数
+                this.shineAngle = Math.random() * Math.PI * 2;
+                this.shineSpeed = 0.02 + Math.random() * 0.02;
+                
+                // 脉动
+                this.pulse = Math.random() * Math.PI * 2;
+                this.pulseSpeed = 0.03 + Math.random() * 0.02;
+                
+                // 生命值（爆炸模式使用）
+                this.life = 1;
+            }
+            
+            update() {
+                // 色相变化
+                this.hue = (this.hue + this.hueSpeed) % 360;
+                
+                // 脉动效果
+                this.pulse += this.pulseSpeed;
+                this.radius = this.baseRadius + Math.sin(this.pulse) * 5;
+                
+                // 光泽旋转
+                this.shineAngle += this.shineSpeed;
+                
+                // 根据模式更新
+                switch (currentMode) {
+                    case 0: // 漂浮
+                        this.float();
+                        break;
+                    case 1: // 爆炸
+                        this.explode();
+                        break;
+                    case 2: // 聚合
+                        this.aggregate();
+                        break;
+                    case 3: // 波浪
+                        this.wave();
+                        break;
+                }
+                
+                // 鼠标推动
+                this.mousePush();
+                
+                // 边界处理
+                this.handleBounds();
+            }
+            
+            float() {
+                // 轻微漂浮
+                this.vy -= 0.01; // 轻微上升
+                this.vx += Math.sin(time * 0.01 + this.pulse) * 0.02;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 阻尼
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+            }
+            
+            explode() {
+                // 从中心向外爆炸
+                const dx = this.x - width / 2;
+                const dy = this.y - height / 2;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist > 0) {
+                    this.vx += (dx / dist) * 0.5;
+                    this.vy += (dy / dist) * 0.5;
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+            }
+            
+            aggregate() {
+                // 聚合到鼠标位置
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist > 50) {
+                    this.vx += (dx / dist) * 0.3;
+                    this.vy += (dy / dist) * 0.3;
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+            }
+            
+            wave() {
+                // 波浪运动
+                const waveY = Math.sin(this.x * 0.02 + time * 0.05) * 50;
+                const targetY = height / 2 + waveY;
+                
+                this.vy += (targetY - this.y) * 0.02;
+                this.vx += 0.5;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                this.vx *= 0.98;
+                this.vy *= 0.95;
+                
+                // 循环
+                if (this.x > width + this.radius) {
+                    this.x = -this.radius;
+                }
+            }
+            
+            mousePush() {
+                const dx = this.x - mouseX;
+                const dy = this.y - mouseY;
+                const dist = Math.hypot(dx, dy);
+                const minDist = this.radius + 50;
+                
+                if (dist < minDist && dist > 0) {
+                    const force = (minDist - dist) / minDist;
+                    this.vx += (dx / dist) * force * 2;
+                    this.vy += (dy / dist) * force * 2;
+                }
+            }
+            
+            handleBounds() {
+                // 软边界
+                if (this.x < this.radius) {
+                    this.x = this.radius;
+                    this.vx *= -0.5;
+                }
+                if (this.x > width - this.radius) {
+                    this.x = width - this.radius;
+                    this.vx *= -0.5;
+                }
+                if (this.y < this.radius) {
+                    this.y = this.radius;
+                    this.vy *= -0.5;
+                }
+                if (this.y > height - this.radius) {
+                    this.y = height - this.radius;
+                    this.vy *= -0.5;
+                }
+            }
+            
+            draw() {
+                ctx.save();
+                
+                // 主体渐变
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3,
+                    this.y - this.radius * 0.3,
+                    0,
+                    this.x,
+                    this.y,
+                    this.radius
+                );
+                
+                const h = this.hue;
+                gradient.addColorStop(0, `hsla(${h}, 80%, 80%, 0.1)`);
+                gradient.addColorStop(0.5, `hsla(${(h + 30) % 360}, 70%, 60%, 0.15)`);
+                gradient.addColorStop(0.8, `hsla(${(h + 60) % 360}, 60%, 50%, 0.2)`);
+                gradient.addColorStop(1, `hsla(${(h + 90) % 360}, 50%, 40%, 0.1)`);
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 边缘光泽
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${h}, 80%, 70%, 0.4)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // 高光
+                const shineX = this.x + Math.cos(this.shineAngle) * this.radius * 0.4;
+                const shineY = this.y + Math.sin(this.shineAngle) * this.radius * 0.4;
+                
+                ctx.beginPath();
+                ctx.arc(shineX, shineY, this.radius * 0.2, 0, Math.PI * 2);
+                const shineGradient = ctx.createRadialGradient(
+                    shineX, shineY, 0,
+                    shineX, shineY, this.radius * 0.2
+                );
+                shineGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+                shineGradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = shineGradient;
+                ctx.fill();
+                
+                // 次高光
+                const shine2X = this.x - Math.cos(this.shineAngle) * this.radius * 0.3;
+                const shine2Y = this.y - Math.sin(this.shineAngle) * this.radius * 0.3;
+                
+                ctx.beginPath();
+                ctx.arc(shine2X, shine2Y, this.radius * 0.1, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.fill();
+                
+                ctx.restore();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        function initBubbles() {
+            bubbles = [];
+            for (let i = 0; i < 20; i++) {
+                bubbles.push(new Bubble());
+            }
+        }
+        
+        function addBubble(x, y) {
+            if (bubbles.length < maxBubbles) {
+                bubbles.push(new Bubble(x, y));
+            }
+        }
+        
+        function drawBackground() {
+            // 渐变背景
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, '#0a0a1a');
+            gradient.addColorStop(0.5, '#1a1a3a');
+            gradient.addColorStop(1, '#0a1a2a');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 背景星点
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            for (let i = 0; i < 50; i++) {
+                const x = (Math.sin(i * 123.456 + time * 0.001) * 0.5 + 0.5) * width;
+                const y = (Math.cos(i * 789.012 + time * 0.0005) * 0.5 + 0.5) * height;
+                const size = Math.sin(time * 0.02 + i) * 0.5 + 1;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        function cycleMode() {
+            currentMode = (currentMode + 1) % modes.length;
+            modeEl.textContent = modes[currentMode];
+        }
+        
+        function animate() {
+            drawBackground();
+            
+            // 更新和绘制泡泡
+            bubbles.forEach(bubble => {
+                bubble.update();
+                bubble.draw();
+            });
+            
+            bubbleCountEl.textContent = bubbles.length;
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleClick(e) {
+            addBubble(e.clientX, e.clientY);
+        }
+        
+        function handleDblClick() {
+            cycleMode();
+        }
+        
+        function handleTouchStart(e) {
+            if (e.touches.length > 0) {
+                addBubble(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initBubbles();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('dblclick', handleDblClick);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            modeEl.textContent = modes[currentMode];
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                drawBackground();
+                bubbles.forEach(bubble => bubble.draw());
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

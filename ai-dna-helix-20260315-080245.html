@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNA螺旋 | DNA Helix</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a0a1a 0%, #1a1a2e 50%, #0f0f23 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 200, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 15px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 20px rgba(0, 255, 200, 0.8),
+                0 0 40px rgba(0, 255, 200, 0.4);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 200, 0.5);
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 200, 0.6);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        .legend {
+            position: fixed;
+            bottom: 60px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 8px;
+            }
+            .info {
+                font-size: 12px;
+            }
+            .legend {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">DNA螺旋</div>
+    <canvas id="dna"></canvas>
+    <div class="stats">
+        <div>碱基对: <span id="basePairs">0</span></div>
+        <div>旋转速度: <span id="speed">1.0</span>x</div>
+    </div>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-color" style="background: #ff6b6b;"></div>A - 腺嘌呤</div>
+        <div class="legend-item"><div class="legend-color" style="background: #4ecdc4;"></div>T - 胸腺嘧啶</div>
+        <div class="legend-item"><div class="legend-color" style="background: #ffe66d;"></div>G - 鸟嘌呤</div>
+        <div class="legend-item"><div class="legend-color" style="background: #95e1d3;"></div>C - 胞嘧啶</div>
+    </div>
+    <div class="info">移动鼠标旋转视角 · 点击切换旋转速度 · 滚轮缩放</div>
+    
+    <script>
+        const canvas = document.getElementById('dna');
+        const ctx = canvas.getContext('2d');
+        const basePairsEl = document.getElementById('basePairs');
+        const speedEl = document.getElementById('speed');
+        
+        let width, height, centerX, centerY;
+        let rotation = 0;
+        let rotationSpeed = 0.02;
+        let speedLevel = 1;
+        let mouseX = 0, mouseY = 0;
+        let tiltX = 0, tiltY = 0;
+        let targetTiltX = 0, targetTiltY = 0;
+        let zoom = 1;
+        let targetZoom = 1;
+        let time = 0;
+        let particles = [];
+        
+        // 碱基对颜色
+        const baseColors = {
+            'A': { color: '#ff6b6b', glow: 'rgba(255, 107, 107, 0.5)' }, // 腺嘌呤 - 红
+            'T': { color: '#4ecdc4', glow: 'rgba(78, 205, 196, 0.5)' }, // 胸腺嘧啶 - 青
+            'G': { color: '#ffe66d', glow: 'rgba(255, 230, 109, 0.5)' }, // 鸟嘌呤 - 黄
+            'C': { color: '#95e1d3', glow: 'rgba(149, 225, 211, 0.5)' }  // 胞嘧啶 - 绿
+        };
+        
+        // 碱基配对
+        const basePairs = [['A', 'T'], ['T', 'A'], ['G', 'C'], ['C', 'G']];
+        
+        // DNA节点
+        const nodes = [];
+        const nodeCount = 40;
+        const helixRadius = 100;
+        const verticalSpacing = 30;
+        
+        // 粒子类
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 3;
+                this.vy = (Math.random() - 0.5) * 3;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.color = color;
+                this.size = Math.random() * 3 + 1;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                this.life -= this.decay;
+            }
+            
+            draw() {
+                if (this.life <= 0) return;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color.replace(')', `, ${this.life * 0.8})`).replace('rgb', 'rgba');
+                ctx.fill();
+            }
+        }
+        
+        function initNodes() {
+            nodes.length = 0;
+            for (let i = 0; i < nodeCount; i++) {
+                const angle = (i / nodeCount) * Math.PI * 4; // 两个完整螺旋
+                const pair = basePairs[Math.floor(Math.random() * basePairs.length)];
+                
+                nodes.push({
+                    angle: angle,
+                    y: (i - nodeCount / 2) * verticalSpacing,
+                    base1: pair[0],
+                    base2: pair[1],
+                    pulse: Math.random() * Math.PI * 2
+                });
+            }
+            basePairsEl.textContent = nodeCount;
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function project(x, y, z) {
+            // 应用倾斜
+            const cosX = Math.cos(tiltX);
+            const sinX = Math.sin(tiltX);
+            const cosY = Math.cos(tiltY);
+            const sinY = Math.sin(tiltY);
+            
+            // Y轴旋转
+            const x1 = x * cosY - z * sinY;
+            const z1 = x * sinY + z * cosY;
+            
+            // X轴旋转
+            const y2 = y * cosX - z1 * sinX;
+            const z2 = y * sinX + z1 * cosX;
+            
+            // 透视
+            const perspective = 800;
+            const scale = perspective / (perspective + z2);
+            
+            return {
+                x: centerX + x1 * zoom * scale,
+                y: centerY + y2 * zoom * scale,
+                scale: scale,
+                z: z2
+            };
+        }
+        
+        function drawHelix() {
+            // 按深度排序
+            const sortedNodes = nodes.map((node, i) => {
+                const angle = node.angle + rotation;
+                const x1 = Math.cos(angle) * helixRadius;
+                const z1 = Math.sin(angle) * helixRadius;
+                const x2 = Math.cos(angle + Math.PI) * helixRadius;
+                const z2 = Math.sin(angle + Math.PI) * helixRadius;
+                
+                const proj1 = project(x1, node.y, z1);
+                const proj2 = project(x2, node.y, z2);
+                
+                return { ...node, index: i, proj1, proj2, angle, x1, z1, x2, z2 };
+            }).sort((a, b) => b.proj1.z - a.proj1.z);
+            
+            // 绘制连接线和节点
+            sortedNodes.forEach((node, idx) => {
+                const { proj1, proj2, base1, base2, pulse } = node;
+                
+                // 脉冲效果
+                const pulseScale = 1 + Math.sin(time * 0.05 + pulse) * 0.1;
+                
+                // 绘制碱基对连接线（氢键）
+                const gradient = ctx.createLinearGradient(proj1.x, proj1.y, proj2.x, proj2.y);
+                gradient.addColorStop(0, baseColors[base1].glow);
+                gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.2)');
+                gradient.addColorStop(1, baseColors[base2].glow);
+                
+                ctx.beginPath();
+                ctx.moveTo(proj1.x, proj1.y);
+                ctx.lineTo(proj2.x, proj2.y);
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2 * proj1.scale * zoom;
+                ctx.stroke();
+                
+                // 绘制氢键虚线
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // 绘制碱基节点
+                drawBase(proj1.x, proj1.y, base1, proj1.scale * pulseScale, proj1.z);
+                drawBase(proj2.x, proj2.y, base2, proj2.scale * pulseScale, proj2.z);
+            });
+            
+            // 绘制主链
+            drawBackbone(sortedNodes, 0); // 左链
+            drawBackbone(sortedNodes, Math.PI); // 右链
+        }
+        
+        function drawBase(x, y, base, scale, z) {
+            if (z > 200) return; // 背面剔除
+            
+            const size = 15 * scale * zoom;
+            const baseColor = baseColors[base];
+            const alpha = Math.max(0.3, 1 - z / 400);
+            
+            // 发光效果
+            const glow = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
+            glow.addColorStop(0, baseColor.glow);
+            glow.addColorStop(1, 'transparent');
+            ctx.beginPath();
+            ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+            ctx.fillStyle = glow;
+            ctx.fill();
+            
+            // 碱基球体
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            
+            const sphereGradient = ctx.createRadialGradient(
+                x - size * 0.3, y - size * 0.3, 0,
+                x, y, size
+            );
+            sphereGradient.addColorStop(0, '#ffffff');
+            sphereGradient.addColorStop(0.3, baseColor.color);
+            sphereGradient.addColorStop(1, shadeColor(baseColor.color, -30));
+            
+            ctx.fillStyle = sphereGradient;
+            ctx.globalAlpha = alpha;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            
+            // 碱基标签
+            if (size > 8) {
+                ctx.fillStyle = '#000';
+                ctx.font = `bold ${Math.max(10, size)}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(base, x, y);
+            }
+        }
+        
+        function drawBackbone(sortedNodes, angleOffset) {
+            ctx.beginPath();
+            let started = false;
+            
+            sortedNodes.forEach((node, idx) => {
+                const angle = node.angle + rotation + angleOffset;
+                const x = Math.cos(angle) * helixRadius;
+                const z = Math.sin(angle) * helixRadius;
+                const proj = project(x, node.y, z);
+                
+                if (!started) {
+                    ctx.moveTo(proj.x, proj.y);
+                    started = true;
+                } else {
+                    ctx.lineTo(proj.x, proj.y);
+                }
+            });
+            
+            ctx.strokeStyle = 'rgba(100, 200, 255, 0.4)';
+            ctx.lineWidth = 4 * zoom;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+            
+            // 磷酸基团（糖环）
+            sortedNodes.forEach((node) => {
+                const angle = node.angle + rotation + angleOffset;
+                const x = Math.cos(angle) * helixRadius;
+                const z = Math.sin(angle) * helixRadius;
+                const proj = project(x, node.y, z);
+                
+                if (proj.z < 200) {
+                    ctx.beginPath();
+                    ctx.arc(proj.x, proj.y, 5 * proj.scale * zoom, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(150, 220, 255, ${1 - proj.z / 300})`;
+                    ctx.fill();
+                }
+            });
+        }
+        
+        function shadeColor(color, percent) {
+            const num = parseInt(color.replace('#', ''), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = (num >> 16) + amt;
+            const G = (num >> 8 & 0x00FF) + amt;
+            const B = (num & 0x0000FF) + amt;
+            return '#' + (
+                0x1000000 +
+                (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
+                (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
+                (B < 255 ? (B < 1 ? 0 : B) : 255)
+            ).toString(16).slice(1);
+        }
+        
+        function createParticles(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles.push(new Particle(x, y, color));
+            }
+        }
+        
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+        
+        function drawBackground() {
+            // 渐变背景
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.max(width, height) * 0.7
+            );
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 背景星点
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            for (let i = 0; i < 50; i++) {
+                const x = (Math.sin(i * 234.5 + time * 0.001) * 0.5 + 0.5) * width;
+                const y = (Math.cos(i * 456.7 + time * 0.0005) * 0.5 + 0.5) * height;
+                const size = Math.sin(time * 0.02 + i) * 0.5 + 1;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        function animate() {
+            drawBackground();
+            
+            // 平滑过渡
+            tiltX += (targetTiltX - tiltX) * 0.05;
+            tiltY += (targetTiltY - tiltY) * 0.05;
+            zoom += (targetZoom - zoom) * 0.1;
+            
+            // 自动旋转
+            rotation += rotationSpeed;
+            
+            drawHelix();
+            updateParticles();
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            targetTiltX = ((mouseY - centerY) / height) * 0.8;
+            targetTiltY = ((mouseX - centerX) / width) * 0.5;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+                targetTiltX = ((mouseY - centerY) / height) * 0.8;
+                targetTiltY = ((mouseX - centerX) / width) * 0.5;
+            }
+        }
+        
+        function handleClick(e) {
+            // 切换速度
+            speedLevel = (speedLevel % 3) + 1;
+            rotationSpeed = 0.02 * speedLevel;
+            speedEl.textContent = speedLevel + '.0';
+            
+            // 创建粒子效果
+            const colors = ['#ff6b6b', '#4ecdc4', '#ffe66d', '#95e1d3'];
+            const color = colors[Math.floor(Math.random() * colors.length)];
+            createParticles(e.clientX, e.clientY, color);
+        }
+        
+        function handleWheel(e) {
+            e.preventDefault();
+            targetZoom = Math.max(0.5, Math.min(2, targetZoom - e.deltaY * 0.001));
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initNodes();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                drawBackground();
+                drawHelix();
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

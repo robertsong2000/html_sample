@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赛博网格 | Cyber Grid</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #0a0a0f;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 0, 255, 0.9);
+            font-size: 36px;
+            font-weight: bold;
+            letter-spacing: 15px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 10px rgba(255, 0, 255, 1),
+                0 0 20px rgba(255, 0, 255, 0.8),
+                0 0 40px rgba(255, 0, 255, 0.5);
+            animation: glitch 3s infinite;
+        }
+        
+        @keyframes glitch {
+            0%, 90%, 100% { transform: translateX(-50%); }
+            92% { transform: translateX(-50%) translateX(5px); }
+            94% { transform: translateX(-50%) translateX(-5px); }
+            96% { transform: translateX(-50%) translateX(3px); }
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.6);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 8px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">CYBER GRID</div>
+    <canvas id="cybergrid"></canvas>
+    <div class="stats">
+        <div>速度: <span id="speed">1.0</span>x</div>
+        <div>模式: <span id="mode">日落</span></div>
+    </div>
+    <div class="info">移动鼠标倾斜视角 · 点击切换日夜模式 · 滚轮调整速度</div>
+    
+    <script>
+        const canvas = document.getElementById('cybergrid');
+        const ctx = canvas.getContext('2d');
+        const speedEl = document.getElementById('speed');
+        const modeEl = document.getElementById('mode');
+        
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let speed = 1;
+        let gridOffset = 0;
+        let isNight = false;
+        
+        const stars = [];
+        
+        // 颜色主题
+        const themes = {
+            day: {
+                sky: ['#1a0a2e', '#2d1b4e', '#6b2d5c', '#ff6b4a'],
+                grid: { r: 255, g: 0, b: 255 },
+                sun: { r: 255, g: 100, b: 50 }
+            },
+            night: {
+                sky: ['#0a0a1a', '#0f0f2a', '#1a1a3a', '#0a0a1a'],
+                grid: { r: 0, g: 255, b: 255 },
+                sun: { r: 100, g: 150, b: 255 }
+            }
+        };
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+            initStars();
+        }
+        
+        function initStars() {
+            stars.length = 0;
+            const count = 100;
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height * 0.4,
+                    size: Math.random() * 2 + 0.5,
+                    twinkle: Math.random() * Math.PI * 2
+                });
+            }
+        }
+        
+        function drawSky() {
+            const theme = isNight ? themes.night : themes.day;
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            
+            theme.sky.forEach((color, i) => {
+                gradient.addColorStop(i / (theme.sky.length - 1), color);
+            });
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function drawStars() {
+            if (!isNight) return;
+            
+            stars.forEach(star => {
+                star.twinkle += 0.05;
+                const alpha = 0.5 + Math.sin(star.twinkle) * 0.5;
+                
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+        }
+        
+        function drawSun() {
+            const theme = isNight ? themes.night : themes.day;
+            const sunX = centerX + (mouseX - centerX) * 0.1;
+            const sunY = height * 0.25 + (mouseY - centerY) * 0.05;
+            const sunRadius = isNight ? 30 : 60;
+            
+            // 太阳光晕
+            const glowGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius * 3);
+            glowGradient.addColorStop(0, `rgba(${theme.sun.r}, ${theme.sun.g}, ${theme.sun.b}, 0.3)`);
+            glowGradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, sunRadius * 3, 0, Math.PI * 2);
+            ctx.fillStyle = glowGradient;
+            ctx.fill();
+            
+            // 太阳本体
+            const sunGradient = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius);
+            sunGradient.addColorStop(0, `rgba(255, 255, 255, 1)`);
+            sunGradient.addColorStop(0.5, `rgba(${theme.sun.r}, ${theme.sun.g}, ${theme.sun.b}, 0.9)`);
+            sunGradient.addColorStop(1, `rgba(${theme.sun.r}, ${theme.sun.g}, ${theme.sun.b}, 0.7)`);
+            
+            ctx.beginPath();
+            ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
+            ctx.fillStyle = sunGradient;
+            ctx.fill();
+            
+            // 横条纹效果（日落）
+            if (!isNight) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
+                ctx.clip();
+                
+                for (let i = 0; i < 8; i++) {
+                    const y = sunY - sunRadius + (i * sunRadius * 2 / 8);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+                    ctx.fillRect(sunX - sunRadius, y, sunRadius * 2, 8);
+                }
+                ctx.restore();
+            }
+        }
+        
+        function drawMountains() {
+            const horizonY = height * 0.5;
+            
+            // 远山
+            ctx.beginPath();
+            ctx.moveTo(0, horizonY);
+            
+            for (let x = 0; x <= width; x += 50) {
+                const y = horizonY - Math.abs(Math.sin(x * 0.01 + time * 0.01) * 50) - Math.abs(Math.sin(x * 0.02) * 30);
+                ctx.lineTo(x, y);
+            }
+            
+            ctx.lineTo(width, horizonY);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(30, 20, 50, 0.8)';
+            ctx.fill();
+            
+            // 近山
+            ctx.beginPath();
+            ctx.moveTo(0, horizonY + 30);
+            
+            for (let x = 0; x <= width; x += 30) {
+                const y = horizonY + 30 - Math.abs(Math.sin(x * 0.015 + 1) * 40) - Math.abs(Math.sin(x * 0.03) * 20);
+                ctx.lineTo(x, y);
+            }
+            
+            ctx.lineTo(width, horizonY + 30);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(20, 15, 35, 0.9)';
+            ctx.fill();
+        }
+        
+        function drawGrid() {
+            const theme = isNight ? themes.night : themes.day;
+            const gridColor = theme.grid;
+            const horizonY = height * 0.55;
+            
+            // 鼠标倾斜效果
+            const tiltX = (mouseX - centerX) * 0.0003;
+            const tiltY = (mouseY - centerY) * 0.0002;
+            
+            // 绘制网格线
+            const gridSize = 60;
+            const gridDepth = 20;
+            
+            for (let i = -gridDepth; i <= gridDepth; i++) {
+                // 计算透视
+                const z = i + gridOffset % 1;
+                const perspective = 1 / (1 + Math.abs(z) * 0.1);
+                const y = horizonY + (height - horizonY) * (1 - perspective);
+                
+                if (y < horizonY || y > height) continue;
+                
+                // 水平线
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.strokeStyle = `rgba(${gridColor.r}, ${gridColor.g}, ${gridColor.b}, ${perspective * 0.8})`;
+                ctx.lineWidth = perspective * 2;
+                ctx.stroke();
+            }
+            
+            // 垂直线（消失点）
+            const vanishX = centerX + (mouseX - centerX) * 0.2;
+            const vanishY = horizonY + (mouseY - centerY) * 0.1;
+            
+            for (let i = -15; i <= 15; i++) {
+                const startX = vanishX + i * gridSize * 3;
+                
+                ctx.beginPath();
+                ctx.moveTo(vanishX, vanishY);
+                ctx.lineTo(startX, height);
+                ctx.strokeStyle = `rgba(${gridColor.r}, ${gridColor.g}, ${gridColor.b}, 0.4)`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            
+            // 地平线发光
+            const horizonGlow = ctx.createLinearGradient(0, horizonY - 30, 0, horizonY + 30);
+            horizonGlow.addColorStop(0, 'transparent');
+            horizonGlow.addColorStop(0.5, `rgba(${gridColor.r}, ${gridColor.g}, ${gridColor.b}, 0.3)`);
+            horizonGlow.addColorStop(1, 'transparent');
+            
+            ctx.fillStyle = horizonGlow;
+            ctx.fillRect(0, horizonY - 30, width, 60);
+        }
+        
+        function drawScanlines() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            for (let y = 0; y < height; y += 4) {
+                ctx.fillRect(0, y, width, 2);
+            }
+        }
+        
+        function drawVignette() {
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, Math.min(width, height) * 0.3,
+                centerX, centerY, Math.max(width, height) * 0.8
+            );
+            gradient.addColorStop(0, 'transparent');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function toggleMode() {
+            isNight = !isNight;
+            modeEl.textContent = isNight ? '夜晚' : '日落';
+        }
+        
+        function animate() {
+            // 清除画布
+            ctx.fillStyle = '#0a0a0f';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 更新网格偏移
+            gridOffset += 0.02 * speed;
+            
+            // 绘制场景
+            drawSky();
+            drawStars();
+            drawSun();
+            drawMountains();
+            drawGrid();
+            drawScanlines();
+            drawVignette();
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleClick() {
+            toggleMode();
+        }
+        
+        function handleWheel(e) {
+            e.preventDefault();
+            speed = Math.max(0.2, Math.min(5, speed - e.deltaY * 0.003));
+            speedEl.textContent = speed.toFixed(1);
+        }
+        
+        function handleTouchStart() {
+            toggleMode();
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            speedEl.textContent = speed.toFixed(1);
+            modeEl.textContent = isNight ? '夜晚' : '日落';
+            
+            mouseX = centerX;
+            mouseY = centerY;
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                drawSky();
+                drawSun();
+                drawMountains();
+                drawGrid();
+                drawVignette();
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

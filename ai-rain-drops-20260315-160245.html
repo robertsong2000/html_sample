@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雨滴效果 | Rain Drops</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.3) 100%);
+            z-index: 5;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(200, 220, 255, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 30px rgba(100, 150, 255, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(200, 220, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(150, 180, 220, 0.6);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">雨滴效果</div>
+    <canvas id="rain"></canvas>
+    <div class="overlay"></div>
+    <div class="stats">
+        <div>雨滴: <span id="dropCount">0</span></div>
+        <div>强度: <span id="intensity">中</span></div>
+    </div>
+    <div class="info">移动鼠标改变风向 · 点击切换雨量强度</div>
+    
+    <script>
+        const canvas = document.getElementById('rain');
+        const ctx = canvas.getContext('2d');
+        const dropCountEl = document.getElementById('dropCount');
+        const intensityEl = document.getElementById('intensity');
+        
+        let width, height;
+        let raindrops = [];
+        let splashes = [];
+        let ripples = [];
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let intensityLevel = 1;
+        const intensityNames = ['小', '中', '大', '暴雨'];
+        const intensityValues = [100, 250, 500, 800];
+        
+        // 雨滴类
+        class Raindrop {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width * 1.5 - width * 0.25;
+                this.y = -20;
+                this.length = 15 + Math.random() * 25;
+                this.speed = 12 + Math.random() * 10;
+                this.thickness = 1 + Math.random() * 1.5;
+                this.alpha = 0.3 + Math.random() * 0.4;
+            }
+            
+            update(windAngle) {
+                // 风向影响
+                const windInfluence = (mouseX - width / 2) / width * 3;
+                
+                this.y += this.speed;
+                this.x += windInfluence;
+                
+                // 落地检测
+                const groundY = height * 0.85 + Math.sin(this.x * 0.01) * 20;
+                
+                if (this.y > groundY) {
+                    // 创建水花
+                    this.createSplash(this.x, groundY);
+                    this.createRipple(this.x, groundY);
+                    this.reset();
+                }
+            }
+            
+            createSplash(x, y) {
+                const count = 3 + Math.floor(Math.random() * 3);
+                for (let i = 0; i < count; i++) {
+                    splashes.push(new Splash(x, y));
+                }
+            }
+            
+            createRipple(x, y) {
+                if (Math.random() < 0.3) {
+                    ripples.push(new Ripple(x, y));
+                }
+            }
+            
+            draw() {
+                const windInfluence = (mouseX - width / 2) / width * 0.3;
+                const angle = Math.PI / 2 + windInfluence;
+                
+                const endX = this.x + Math.cos(angle) * this.length;
+                const endY = this.y + Math.sin(angle) * this.length;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(endX, endY);
+                
+                const gradient = ctx.createLinearGradient(this.x, this.y, endX, endY);
+                gradient.addColorStop(0, `rgba(180, 200, 255, 0)`);
+                gradient.addColorStop(0.5, `rgba(180, 200, 255, ${this.alpha})`);
+                gradient.addColorStop(1, `rgba(220, 240, 255, ${this.alpha * 0.8})`);
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = this.thickness;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+        
+        // 水花类
+        class Splash {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = -Math.random() * 5 - 2;
+                this.life = 1;
+                this.decay = 0.04 + Math.random() * 0.02;
+                this.size = 1 + Math.random() * 2;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.3; // 重力
+                this.life -= this.decay;
+            }
+            
+            draw() {
+                if (this.life <= 0) return;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200, 220, 255, ${this.life * 0.8})`;
+                ctx.fill();
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        // 波纹类
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 20 + Math.random() * 20;
+                this.speed = 1.5;
+                this.alpha = 0.6;
+            }
+            
+            update() {
+                this.radius += this.speed;
+                this.alpha = 0.6 * (1 - this.radius / this.maxRadius);
+            }
+            
+            draw() {
+                if (this.alpha <= 0) return;
+                
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, this.radius, this.radius * 0.3, 0, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(180, 200, 255, ${this.alpha})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+            
+            isDead() {
+                return this.radius >= this.maxRadius;
+            }
+        }
+        
+        // 背景云朵
+        const clouds = [];
+        
+        class Cloud {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = -200;
+                this.y = Math.random() * height * 0.3;
+                this.width = 100 + Math.random() * 200;
+                this.height = 40 + Math.random() * 60;
+                this.speed = 0.2 + Math.random() * 0.3;
+                this.alpha = 0.1 + Math.random() * 0.15;
+            }
+            
+            update() {
+                const windInfluence = (mouseX - width / 2) / width * 0.5;
+                this.x += this.speed + windInfluence;
+                
+                if (this.x > width + 200) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                ctx.fillStyle = `rgba(150, 170, 200, ${this.alpha})`;
+                
+                // 绘制云朵形状
+                ctx.beginPath();
+                ctx.ellipse(this.x, this.y, this.width * 0.5, this.height * 0.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.ellipse(this.x - this.width * 0.3, this.y + 10, this.width * 0.35, this.height * 0.4, 0, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.beginPath();
+                ctx.ellipse(this.x + this.width * 0.3, this.y + 5, this.width * 0.4, this.height * 0.45, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initRain();
+            initClouds();
+        }
+        
+        function initRain() {
+            raindrops = [];
+            const count = intensityValues[intensityLevel];
+            
+            for (let i = 0; i < count; i++) {
+                const drop = new Raindrop();
+                drop.y = Math.random() * height; // 初始随机位置
+                raindrops.push(drop);
+            }
+            
+            dropCountEl.textContent = count;
+        }
+        
+        function initClouds() {
+            clouds.length = 0;
+            const count = 8;
+            
+            for (let i = 0; i < count; i++) {
+                const cloud = new Cloud();
+                cloud.x = Math.random() * (width + 400) - 200;
+                clouds.push(cloud);
+            }
+        }
+        
+        function drawBackground() {
+            // 天空渐变
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a1a');
+            gradient.addColorStop(0.4, '#1a2a3a');
+            gradient.addColorStop(0.7, '#2a3a4a');
+            gradient.addColorStop(1, '#1a2a3a');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 云层
+            clouds.forEach(cloud => {
+                cloud.update();
+                cloud.draw();
+            });
+        }
+        
+        function drawGround() {
+            const groundY = height * 0.85;
+            
+            // 地面渐变
+            const gradient = ctx.createLinearGradient(0, groundY, 0, height);
+            gradient.addColorStop(0, 'rgba(30, 50, 70, 0.8)');
+            gradient.addColorStop(1, 'rgba(20, 35, 50, 0.9)');
+            
+            ctx.fillStyle = gradient;
+            
+            // 波浪形地面
+            ctx.beginPath();
+            ctx.moveTo(0, height);
+            
+            for (let x = 0; x <= width; x += 10) {
+                const y = groundY + Math.sin(x * 0.01 + time * 0.02) * 15;
+                ctx.lineTo(x, y);
+            }
+            
+            ctx.lineTo(width, height);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 地面反光
+            ctx.fillStyle = 'rgba(100, 150, 200, 0.1)';
+            ctx.beginPath();
+            
+            for (let x = 0; x <= width; x += 10) {
+                const y = groundY + Math.sin(x * 0.01 + time * 0.02) * 15 + 5;
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            for (let x = width; x >= 0; x -= 10) {
+                const y = groundY + Math.sin(x * 0.01 + time * 0.02) * 15 + 20;
+                ctx.lineTo(x, y);
+            }
+            
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        function drawLightning() {
+            // 随机闪电
+            if (intensityLevel >= 2 && Math.random() < 0.002) {
+                const startX = Math.random() * width;
+                let x = startX;
+                let y = 0;
+                
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.lineWidth = 3;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = 'rgba(150, 200, 255, 1)';
+                
+                while (y < height * 0.7) {
+                    x += (Math.random() - 0.5) * 50;
+                    y += 20 + Math.random() * 30;
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                
+                // 闪电闪光效果
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                ctx.fillRect(0, 0, width, height);
+            }
+        }
+        
+        function cycleIntensity() {
+            intensityLevel = (intensityLevel + 1) % intensityNames.length;
+            intensityEl.textContent = intensityNames[intensityLevel];
+            initRain();
+        }
+        
+        function animate() {
+            drawBackground();
+            
+            const windAngle = (mouseX - width / 2) / width;
+            
+            // 更新和绘制雨滴
+            raindrops.forEach(drop => {
+                drop.update(windAngle);
+                drop.draw();
+            });
+            
+            // 更新和绘制水花
+            for (let i = splashes.length - 1; i >= 0; i--) {
+                splashes[i].update();
+                splashes[i].draw();
+                if (splashes[i].isDead()) {
+                    splashes.splice(i, 1);
+                }
+            }
+            
+            // 更新和绘制波纹
+            for (let i = ripples.length - 1; i >= 0; i--) {
+                ripples[i].update();
+                ripples[i].draw();
+                if (ripples[i].isDead()) {
+                    ripples.splice(i, 1);
+                }
+            }
+            
+            drawGround();
+            drawLightning();
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleClick() {
+            cycleIntensity();
+        }
+        
+        function handleTouchStart() {
+            cycleIntensity();
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            intensityEl.textContent = intensityNames[intensityLevel];
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                drawBackground();
+                drawGround();
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>能量场 | Energy Field</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: none;
+        }
+        
+        .cursor {
+            position: fixed;
+            width: 30px;
+            height: 30px;
+            border: 2px solid rgba(0, 255, 200, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 100;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px rgba(0, 255, 200, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 200, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 30px rgba(0, 255, 200, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 200, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 12px;
+            }
+            .cursor {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">能量场</div>
+    <canvas id="energy"></canvas>
+    <div class="cursor" id="cursor"></div>
+    <div class="stats">
+        <div>粒子: <span id="particleCount">0</span></div>
+        <div>能量: <span id="energy">100</span>%</div>
+    </div>
+    <div class="info">移动鼠标产生能量轨迹 · 点击释放能量波 · 按住持续发射</div>
+    
+    <script>
+        const canvas = document.getElementById('energy');
+        const ctx = canvas.getContext('2d');
+        const cursor = document.getElementById('cursor');
+        const particleCountEl = document.getElementById('particleCount');
+        const energyEl = document.getElementById('energy');
+        
+        let width, height;
+        let particles = [];
+        let waves = [];
+        let trails = [];
+        let mouseX = 0, mouseY = 0;
+        let prevMouseX = 0, prevMouseY = 0;
+        let isMouseDown = false;
+        let time = 0;
+        let energy = 100;
+        
+        // 粒子类
+        class Particle {
+            constructor(x, y, vx, vy) {
+                this.x = x;
+                this.y = y;
+                this.vx = vx || (Math.random() - 0.5) * 2;
+                this.vy = vy || (Math.random() - 0.5) * 2;
+                this.life = 1;
+                this.decay = 0.01 + Math.random() * 0.02;
+                this.size = 2 + Math.random() * 3;
+                this.hue = 160 + Math.random() * 40;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+                this.life -= this.decay;
+            }
+            
+            draw() {
+                if (this.life <= 0) return;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life * 0.8})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsla(${this.hue}, 100%, 50%, ${this.life})`;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        // 能量波类
+        class EnergyWave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 300;
+                this.speed = 8;
+                this.life = 1;
+            }
+            
+            update() {
+                this.radius += this.speed;
+                this.life = 1 - this.radius / this.maxRadius;
+            }
+            
+            draw() {
+                if (this.life <= 0) return;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 255, 200, ${this.life * 0.6})`;
+                ctx.lineWidth = 3 * this.life;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = 'rgba(0, 255, 200, 0.8)';
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                
+                // 内环
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.7, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 200, 255, ${this.life * 0.4})`;
+                ctx.lineWidth = 2 * this.life;
+                ctx.stroke();
+            }
+            
+            isDead() {
+                return this.radius >= this.maxRadius;
+            }
+        }
+        
+        // 轨迹类
+        class Trail {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.life = 1;
+                this.decay = 0.05;
+                this.size = 8;
+            }
+            
+            update() {
+                this.life -= this.decay;
+                this.size *= 0.95;
+            }
+            
+            draw() {
+                if (this.life <= 0) return;
+                
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size
+                );
+                gradient.addColorStop(0, `rgba(0, 255, 200, ${this.life * 0.5})`);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+            
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+        
+        // 背景粒子
+        let bgParticles = [];
+        
+        class BgParticle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 2 + 0.5;
+                this.speed = Math.random() * 0.5 + 0.1;
+                this.angle = Math.random() * Math.PI * 2;
+            }
+            
+            update() {
+                // 向鼠标移动
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist < 200 && dist > 0) {
+                    this.x += (dx / dist) * this.speed * 2;
+                    this.y += (dy / dist) * this.speed * 2;
+                }
+                
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+                
+                if (this.x < 0 || this.x > width || this.y < 0 || this.y > height) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0, 255, 200, 0.3)';
+                ctx.fill();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initBgParticles();
+        }
+        
+        function initBgParticles() {
+            bgParticles = [];
+            const count = 100;
+            for (let i = 0; i < count; i++) {
+                bgParticles.push(new BgParticle());
+            }
+        }
+        
+        function createEnergyWave(x, y) {
+            if (energy >= 10) {
+                waves.push(new EnergyWave(x, y));
+                energy -= 10;
+                
+                // 创建爆炸粒子
+                for (let i = 0; i < 30; i++) {
+                    const angle = (i / 30) * Math.PI * 2;
+                    const speed = 3 + Math.random() * 5;
+                    particles.push(new Particle(
+                        x, y,
+                        Math.cos(angle) * speed,
+                        Math.sin(angle) * speed
+                    ));
+                }
+            }
+        }
+        
+        function emitParticles() {
+            if (isMouseDown && energy > 0) {
+                for (let i = 0; i < 3; i++) {
+                    const angle = Math.atan2(mouseY - prevMouseY, mouseX - prevMouseX);
+                    const spread = (Math.random() - 0.5) * 1;
+                    
+                    particles.push(new Particle(
+                        mouseX + (Math.random() - 0.5) * 20,
+                        mouseY + (Math.random() - 0.5) * 20,
+                        Math.cos(angle + spread) * 3,
+                        Math.sin(angle + spread) * 3
+                    ));
+                }
+                energy = Math.max(0, energy - 0.5);
+            }
+        }
+        
+        function drawBackground() {
+            // 深色背景
+            ctx.fillStyle = 'rgba(5, 5, 10, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function drawEnergyField() {
+            // 中心能量场
+            const gradient = ctx.createRadialGradient(
+                mouseX, mouseY, 0,
+                mouseX, mouseY, 150
+            );
+            gradient.addColorStop(0, `rgba(0, 255, 200, ${energy / 200})`);
+            gradient.addColorStop(0.5, `rgba(0, 200, 255, ${energy / 400})`);
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 150, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        function animate() {
+            drawBackground();
+            
+            // 更新背景粒子
+            bgParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            // 绘制能量场
+            drawEnergyField();
+            
+            // 添加轨迹
+            const mouseSpeed = Math.hypot(mouseX - prevMouseX, mouseY - prevMouseY);
+            if (mouseSpeed > 5) {
+                trails.push(new Trail(mouseX, mouseY));
+            }
+            
+            // 发射粒子
+            emitParticles();
+            
+            // 更新轨迹
+            for (let i = trails.length - 1; i >= 0; i--) {
+                trails[i].update();
+                trails[i].draw();
+                if (trails[i].isDead()) {
+                    trails.splice(i, 1);
+                }
+            }
+            
+            // 更新粒子
+            for (let i = particles.length - 1; i >= 0; i--) {
+                particles[i].update();
+                particles[i].draw();
+                if (particles[i].isDead()) {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            // 更新能量波
+            for (let i = waves.length - 1; i >= 0; i--) {
+                waves[i].update();
+                waves[i].draw();
+                if (waves[i].isDead()) {
+                    waves.splice(i, 1);
+                }
+            }
+            
+            // 恢复能量
+            energy = Math.min(100, energy + 0.1);
+            
+            // 更新UI
+            particleCountEl.textContent = particles.length + bgParticles.length;
+            energyEl.textContent = Math.round(energy);
+            
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            cursor.style.left = mouseX + 'px';
+            cursor.style.top = mouseY + 'px';
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleMouseDown(e) {
+            isMouseDown = true;
+            createEnergyWave(e.clientX, e.clientY);
+        }
+        
+        function handleMouseUp() {
+            isMouseDown = false;
+        }
+        
+        function handleTouchStart(e) {
+            if (e.touches.length > 0) {
+                isMouseDown = true;
+                createEnergyWave(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+        
+        function handleTouchEnd() {
+            isMouseDown = false;
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('mousedown', handleMouseDown);
+            canvas.addEventListener('mouseup', handleMouseUp);
+            canvas.addEventListener('mouseleave', handleMouseUp);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            canvas.addEventListener('touchend', handleTouchEnd);
+            
+            // 初始背景
+            ctx.fillStyle = '#05050a';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                bgParticles.forEach(p => p.draw());
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

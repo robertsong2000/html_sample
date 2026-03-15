@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>几何舞蹈 | Geometric Dance</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #0a0a0f;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 36px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 30px rgba(255, 100, 200, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 150, 200, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 24px;
+                letter-spacing: 6px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">几何舞蹈</div>
+    <canvas id="geometric"></canvas>
+    <div class="stats">
+        <div>形状: <span id="shapeCount">0</span></div>
+        <div>模式: <span id="mode">旋转</span></div>
+    </div>
+    <div class="info">移动鼠标引导形状 · 点击切换模式 · 滚轮调整速度</div>
+    
+    <script>
+        const canvas = document.getElementById('geometric');
+        const ctx = canvas.getContext('2d');
+        const shapeCountEl = document.getElementById('shapeCount');
+        const modeEl = document.getElementById('mode');
+        
+        let width, height, centerX, centerY;
+        let shapes = [];
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let speed = 1;
+        let currentMode = 0;
+        const modes = ['旋转', '脉冲', '螺旋', '混沌'];
+        
+        // 形状类
+        class Shape {
+            constructor(index, total) {
+                this.index = index;
+                this.total = total;
+                this.reset();
+            }
+            
+            reset() {
+                this.x = centerX;
+                this.y = centerY;
+                this.angle = (this.index / this.total) * Math.PI * 2;
+                this.baseRadius = 100 + Math.random() * 150;
+                this.radius = this.baseRadius;
+                this.rotationSpeed = 0.01 + Math.random() * 0.02;
+                this.sides = Math.floor(Math.random() * 4) + 3; // 3-6边形
+                this.size = 20 + Math.random() * 40;
+                this.hue = (this.index / this.total) * 360;
+                this.pulseOffset = Math.random() * Math.PI * 2;
+                this.vx = 0;
+                this.vy = 0;
+            }
+            
+            update() {
+                // 色相变化
+                this.hue = (this.hue + 0.5 * speed) % 360;
+                
+                switch (currentMode) {
+                    case 0: // 旋转
+                        this.rotate();
+                        break;
+                    case 1: // 脉冲
+                        this.pulse();
+                        break;
+                    case 2: // 螺旋
+                        this.spiral();
+                        break;
+                    case 3: // 混沌
+                        this.chaos();
+                        break;
+                }
+                
+                // 鼠标吸引
+                this.mouseAttract();
+            }
+            
+            rotate() {
+                this.angle += this.rotationSpeed * speed;
+                this.radius = this.baseRadius + Math.sin(time * 0.02 + this.pulseOffset) * 30;
+                
+                this.x = centerX + Math.cos(this.angle) * this.radius;
+                this.y = centerY + Math.sin(this.angle) * this.radius;
+            }
+            
+            pulse() {
+                const pulseTime = time * 0.03 * speed;
+                const pulse = Math.sin(pulseTime + this.pulseOffset);
+                
+                this.radius = this.baseRadius * (0.5 + pulse * 0.5);
+                this.angle += this.rotationSpeed * speed * 0.5;
+                this.size = 20 + pulse * 30;
+                
+                this.x = centerX + Math.cos(this.angle) * this.radius;
+                this.y = centerY + Math.sin(this.angle) * this.radius;
+            }
+            
+            spiral() {
+                this.angle += this.rotationSpeed * speed;
+                const spiralRadius = this.baseRadius + Math.sin(time * 0.01 + this.index * 0.5) * 100;
+                
+                this.x = centerX + Math.cos(this.angle + time * 0.01) * spiralRadius;
+                this.y = centerY + Math.sin(this.angle + time * 0.01) * spiralRadius;
+            }
+            
+            chaos() {
+                // 随机运动
+                this.vx += (Math.random() - 0.5) * 0.5 * speed;
+                this.vy += (Math.random() - 0.5) * 0.5 * speed;
+                
+                // 向中心的轻微引力
+                const dx = centerX - this.x;
+                const dy = centerY - this.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist > 300) {
+                    this.vx += (dx / dist) * 0.1;
+                    this.vy += (dy / dist) * 0.1;
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                
+                // 旋转
+                this.angle += this.rotationSpeed * speed;
+            }
+            
+            mouseAttract() {
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.hypot(dx, dy);
+                
+                if (dist < 150 && dist > 0) {
+                    const force = (1 - dist / 150) * 0.5;
+                    this.x += (dx / dist) * force * 5;
+                    this.y += (dy / dist) * force * 5;
+                }
+            }
+            
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                
+                // 绘制多边形
+                ctx.beginPath();
+                for (let i = 0; i <= this.sides; i++) {
+                    const a = (i / this.sides) * Math.PI * 2;
+                    const x = Math.cos(a) * this.size;
+                    const y = Math.sin(a) * this.size;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                
+                // 填充渐变
+                const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, this.size);
+                gradient.addColorStop(0, `hsla(${this.hue}, 80%, 60%, 0.3)`);
+                gradient.addColorStop(1, `hsla(${this.hue}, 80%, 40%, 0.1)`);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 边框
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 70%, 0.8)`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // 发光效果
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsla(${this.hue}, 80%, 60%, 0.5)`;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                
+                ctx.restore();
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function initShapes() {
+            shapes = [];
+            const count = 15;
+            
+            for (let i = 0; i < count; i++) {
+                shapes.push(new Shape(i, count));
+            }
+            
+            shapeCountEl.textContent = count;
+        }
+        
+        function drawConnections() {
+            const maxDist = 200;
+            
+            for (let i = 0; i < shapes.length; i++) {
+                for (let j = i + 1; j < shapes.length; j++) {
+                    const dx = shapes[i].x - shapes[j].x;
+                    const dy = shapes[i].y - shapes[j].y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    if (dist < maxDist) {
+                        const alpha = (1 - dist / maxDist) * 0.3;
+                        const avgHue = (shapes[i].hue + shapes[j].hue) / 2;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(shapes[i].x, shapes[i].y);
+                        ctx.lineTo(shapes[j].x, shapes[j].y);
+                        ctx.strokeStyle = `hsla(${avgHue}, 70%, 60%, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        function drawCenter() {
+            // 中心发光
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, 100
+            );
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+            gradient.addColorStop(0.5, 'rgba(255, 100, 200, 0.05)');
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 100, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        function drawBackground() {
+            // 渐变背景
+            const gradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, Math.max(width, height) * 0.7
+            );
+            gradient.addColorStop(0, '#15151f');
+            gradient.addColorStop(1, '#0a0a0f');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function cycleMode() {
+            currentMode = (currentMode + 1) % modes.length;
+            modeEl.textContent = modes[currentMode];
+        }
+        
+        function animate() {
+            drawBackground();
+            drawCenter();
+            
+            // 更新形状
+            shapes.forEach(shape => shape.update());
+            
+            // 绘制连接线
+            drawConnections();
+            
+            // 绘制形状
+            shapes.forEach(shape => shape.draw());
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                mouseX = e.touches[0].clientX;
+                mouseY = e.touches[0].clientY;
+            }
+        }
+        
+        function handleClick() {
+            cycleMode();
+        }
+        
+        function handleWheel(e) {
+            e.preventDefault();
+            speed = Math.max(0.2, Math.min(3, speed - e.deltaY * 0.002));
+        }
+        
+        function handleTouchStart() {
+            cycleMode();
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initShapes();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('wheel', handleWheel, { passive: false });
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            modeEl.textContent = modes[currentMode];
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                drawBackground();
+                drawCenter();
+                shapes.forEach(shape => shape.draw());
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

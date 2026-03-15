@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>城市天际线 | City Skyline</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #0a0a1a 0%, #1a1a3a 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 10px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 20px rgba(100, 150, 255, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .time {
+            position: fixed;
+            top: 80px;
+            right: 30px;
+            color: rgba(255, 220, 150, 0.8);
+            font-size: 48px;
+            font-weight: 200;
+            z-index: 10;
+            pointer-events: none;
+            font-family: 'Courier New', monospace;
+            text-shadow: 0 0 15px rgba(255, 200, 100, 0.5);
+        }
+        
+        @media (max-width: 768px) {
+            .title {
+                font-size: 22px;
+                letter-spacing: 5px;
+            }
+            .time {
+                font-size: 32px;
+                right: 15px;
+            }
+            .info {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">城市天际线</div>
+    <div class="time" id="time">00:00</div>
+    <canvas id="city"></canvas>
+    <div class="info">移动鼠标切换昼夜 · 点击发射烟花</div>
+    
+    <script>
+        const canvas = document.getElementById('city');
+        const ctx = canvas.getContext('2d');
+        const timeEl = document.getElementById('time');
+        
+        let width, height;
+        let buildings = [];
+        let stars = [];
+        let fireworks = [];
+        let particles = [];
+        let mouseX = 0;
+        let dayNightCycle = 0;
+        let targetDayNight = 0;
+        let time = 0;
+        
+        // 颜色配置
+        const skyColors = {
+            night: { top: '#0a0a1a', bottom: '#1a1a3a' },
+            dawn: { top: '#1a1a3a', bottom: '#ff6b4a' },
+            day: { top: '#4a90c2', bottom: '#87ceeb' },
+            dusk: { top: '#2a1a3a', bottom: '#ff8c42' }
+        };
+        
+        // 建筑类
+        class Building {
+            constructor(x, baseWidth, maxHeight, layer) {
+                this.x = x;
+                this.baseWidth = baseWidth;
+                this.width = baseWidth + Math.random() * 30;
+                this.height = 50 + Math.random() * maxHeight;
+                this.layer = layer;
+                this.windows = [];
+                this.generateWindows();
+            }
+            
+            generateWindows() {
+                const windowRows = Math.floor(this.height / 20);
+                const windowCols = Math.floor(this.width / 15);
+                
+                for (let row = 0; row < windowRows; row++) {
+                    for (let col = 0; col < windowCols; col++) {
+                        if (Math.random() < 0.7) {
+                            this.windows.push({
+                                x: col * 15 + 5,
+                                y: row * 20 + 10,
+                                lit: Math.random() < 0.6,
+                                flicker: Math.random() < 0.1,
+                                flickerOffset: Math.random() * Math.PI * 2
+                            });
+                        }
+                    }
+                }
+            }
+            
+            draw(dayNight) {
+                const baseY = height - 50;
+                
+                // 建筑主体颜色根据层级
+                const brightness = 30 + this.layer * 15;
+                const buildingColor = `rgb(${brightness}, ${brightness}, ${brightness + 10})`;
+                
+                ctx.fillStyle = buildingColor;
+                ctx.fillRect(this.x, baseY - this.height, this.width, this.height);
+                
+                // 建筑轮廓
+                ctx.strokeStyle = `rgba(50, 50, 70, 0.5)`;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(this.x, baseY - this.height, this.width, this.height);
+                
+                // 绘制窗户
+                this.windows.forEach(win => {
+                    let isLit = win.lit;
+                    
+                    // 夜间更多灯光
+                    if (dayNight > 0.5) {
+                        isLit = win.lit || Math.random() < 0.3;
+                    }
+                    
+                    // 闪烁效果
+                    if (win.flicker && Math.sin(time * 0.1 + win.flickerOffset) > 0.8) {
+                        isLit = !isLit;
+                    }
+                    
+                    if (isLit && dayNight > 0.3) {
+                        const windowAlpha = 0.5 + (dayNight - 0.3) * 0.7;
+                        ctx.fillStyle = `rgba(255, 240, 180, ${windowAlpha})`;
+                        ctx.shadowBlur = 5;
+                        ctx.shadowColor = 'rgba(255, 200, 100, 0.5)';
+                    } else {
+                        ctx.fillStyle = 'rgba(100, 120, 150, 0.3)';
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    ctx.fillRect(
+                        this.x + win.x,
+                        baseY - this.height + win.y,
+                        8,
+                        12
+                    );
+                });
+                
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        // 烟花类
+        class Firework {
+            constructor(x, y) {
+                this.x = x;
+                this.y = height - 50;
+                this.targetY = y;
+                this.vy = -12 - Math.random() * 5;
+                this.exploded = false;
+                this.color = `hsl(${Math.random() * 60 + 10}, 100%, 60%)`;
+            }
+            
+            update() {
+                if (!this.exploded) {
+                    this.y += this.vy;
+                    this.vy += 0.2;
+                    
+                    if (this.vy >= 0 || this.y <= this.targetY) {
+                        this.explode();
+                    }
+                }
+            }
+            
+            explode() {
+                this.exploded = true;
+                const count = 30 + Math.floor(Math.random() * 20);
+                
+                for (let i = 0; i < count; i++) {
+                    const angle = (i / count) * Math.PI * 2;
+                    const speed = 2 + Math.random() * 4;
+                    
+                    particles.push({
+                        x: this.x,
+                        y: this.y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed,
+                        life: 1,
+                        decay: 0.015 + Math.random() * 0.01,
+                        color: this.color,
+                        size: 2 + Math.random() * 2
+                    });
+                }
+            }
+            
+            draw() {
+                if (!this.exploded) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = '#fff';
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = this.color;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+            
+            isDead() {
+                return this.exploded;
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            generateBuildings();
+            generateStars();
+        }
+        
+        function generateBuildings() {
+            buildings = [];
+            
+            // 三层建筑，从远到近
+            const layers = [
+                { count: 15, maxHeight: 150, baseWidth: 40, offset: 0 },
+                { count: 12, maxHeight: 250, baseWidth: 50, offset: 50 },
+                { count: 8, maxHeight: 350, baseWidth: 60, offset: 100 }
+            ];
+            
+            layers.forEach((layer, layerIndex) => {
+                const spacing = (width + 200) / layer.count;
+                
+                for (let i = 0; i < layer.count; i++) {
+                    buildings.push(new Building(
+                        -100 + i * spacing + (Math.random() - 0.5) * 50 + layer.offset,
+                        layer.baseWidth,
+                        layer.maxHeight,
+                        layerIndex
+                    ));
+                }
+            });
+            
+            // 按层级排序
+            buildings.sort((a, b) => a.layer - b.layer);
+        }
+        
+        function generateStars() {
+            stars = [];
+            const count = Math.floor((width * height) / 8000);
+            
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height * 0.5,
+                    size: Math.random() * 2 + 0.5,
+                    twinkle: Math.random() * Math.PI * 2,
+                    speed: Math.random() * 0.05 + 0.02
+                });
+            }
+        }
+        
+        function drawSky(dayNight) {
+            // 根据dayNight值混合天空颜色
+            let topColor, bottomColor;
+            
+            if (dayNight < 0.25) {
+                // 夜晚
+                topColor = skyColors.night.top;
+                bottomColor = skyColors.night.bottom;
+            } else if (dayNight < 0.5) {
+                // 黎明
+                const t = (dayNight - 0.25) / 0.25;
+                topColor = lerpColor(skyColors.night.top, skyColors.dawn.top, t);
+                bottomColor = lerpColor(skyColors.night.bottom, skyColors.dawn.bottom, t);
+            } else if (dayNight < 0.75) {
+                // 白天
+                const t = (dayNight - 0.5) / 0.25;
+                topColor = lerpColor(skyColors.dawn.top, skyColors.day.top, t);
+                bottomColor = lerpColor(skyColors.dawn.bottom, skyColors.day.bottom, t);
+            } else {
+                // 黄昏
+                const t = (dayNight - 0.75) / 0.25;
+                topColor = lerpColor(skyColors.day.top, skyColors.dusk.top, t);
+                bottomColor = lerpColor(skyColors.day.bottom, skyColors.dusk.bottom, t);
+            }
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, topColor);
+            gradient.addColorStop(1, bottomColor);
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        function lerpColor(color1, color2, t) {
+            const c1 = hexToRgb(color1);
+            const c2 = hexToRgb(color2);
+            
+            return `rgb(${Math.round(c1.r + (c2.r - c1.r) * t)}, ${Math.round(c1.g + (c2.g - c1.g) * t)}, ${Math.round(c1.b + (c2.b - c1.b) * t)})`;
+        }
+        
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+        
+        function drawStars(dayNight) {
+            if (dayNight > 0.5) return; // 白天不显示星星
+            
+            const starAlpha = 1 - dayNight * 2;
+            
+            stars.forEach(star => {
+                star.twinkle += star.speed;
+                const brightness = 0.5 + Math.sin(star.twinkle) * 0.5;
+                
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${brightness * starAlpha * 0.8})`;
+                ctx.fill();
+            });
+        }
+        
+        function drawMoon(dayNight) {
+            if (dayNight > 0.4) return;
+            
+            const moonAlpha = 1 - dayNight * 2.5;
+            const moonX = width * 0.85;
+            const moonY = height * 0.15;
+            const moonRadius = 30;
+            
+            // 月亮
+            const gradient = ctx.createRadialGradient(
+                moonX, moonY, 0,
+                moonX, moonY, moonRadius
+            );
+            gradient.addColorStop(0, `rgba(255, 255, 240, ${moonAlpha})`);
+            gradient.addColorStop(1, `rgba(255, 255, 200, 0)`);
+            
+            ctx.beginPath();
+            ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        function drawGround(dayNight) {
+            const groundY = height - 50;
+            
+            ctx.fillStyle = `rgb(${20 + dayNight * 30}, ${20 + dayNight * 20}, ${30 + dayNight * 20})`;
+            ctx.fillRect(0, groundY, width, 50);
+            
+            // 道路
+            ctx.fillStyle = `rgb(${30 + dayNight * 20}, ${30 + dayNight * 15}, ${35 + dayNight * 15})`;
+            ctx.fillRect(0, groundY + 20, width, 30);
+            
+            // 道路标线
+            ctx.strokeStyle = `rgba(255, 255, 200, ${0.3 + dayNight * 0.3})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([30, 20]);
+            
+            ctx.beginPath();
+            ctx.moveTo(0, groundY + 35);
+            ctx.lineTo(width, groundY + 35);
+            ctx.stroke();
+            
+            ctx.setLineDash([]);
+        }
+        
+        function updateTimeDisplay() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            timeEl.textContent = `${hours}:${minutes}`;
+        }
+        
+        function launchFirework(x, y) {
+            fireworks.push(new Firework(x, Math.min(y, height * 0.3)));
+        }
+        
+        function animate() {
+            // 平滑过渡昼夜
+            dayNightCycle += (targetDayNight - dayNightCycle) * 0.02;
+            
+            // 绘制场景
+            drawSky(dayNightCycle);
+            drawStars(dayNightCycle);
+            drawMoon(dayNightCycle);
+            
+            // 绘制建筑
+            buildings.forEach(building => building.draw(dayNightCycle));
+            
+            // 绘制地面
+            drawGround(dayNightCycle);
+            
+            // 更新和绘制烟花
+            for (let i = fireworks.length - 1; i >= 0; i--) {
+                fireworks[i].update();
+                fireworks[i].draw();
+                if (fireworks[i].isDead()) {
+                    fireworks.splice(i, 1);
+                }
+            }
+            
+            // 更新和绘制粒子
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1;
+                p.life -= p.decay;
+                
+                if (p.life > 0) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color.replace(')', `, ${p.life})`).replace('hsl', 'hsla');
+                    ctx.fill();
+                } else {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            // 更新时间显示
+            if (time % 60 === 0) {
+                updateTimeDisplay();
+            }
+            
+            time++;
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        function handleMouseMove(e) {
+            mouseX = e.clientX;
+            
+            // 根据鼠标X位置设置昼夜
+            targetDayNight = mouseX / width;
+        }
+        
+        function handleTouchMove(e) {
+            if (e.touches.length > 0) {
+                targetDayNight = e.touches[0].clientX / width;
+            }
+        }
+        
+        function handleClick(e) {
+            launchFirework(e.clientX, e.clientY);
+        }
+        
+        function handleTouchStart(e) {
+            if (e.touches.length > 0) {
+                launchFirework(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            updateTimeDisplay();
+            
+            window.addEventListener('resize', resize);
+            canvas.addEventListener('mousemove', handleMouseMove);
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: true });
+            canvas.addEventListener('click', handleClick);
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: true });
+            
+            // 检测 prefers-reduced-motion
+            const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+            if (!prefersReducedMotion.matches) {
+                animate();
+            } else {
+                // 静态渲染
+                drawSky(0);
+                drawStars(0);
+                drawMoon(0);
+                buildings.forEach(building => building.draw(0));
+                drawGround(0);
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

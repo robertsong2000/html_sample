@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurora Borealis - 极光</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 255, 200, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="aurora"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 扭曲极光形态</span>
+        <span>👆 点击 - 创建星爆效果</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('aurora');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let targetMouseX = mouseX;
+        let targetMouseY = mouseY;
+
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            targetMouseX = e.touches[0].clientX;
+            targetMouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Star burst effects
+        let starBursts = [];
+
+        canvas.addEventListener('click', (e) => {
+            createStarBurst(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createStarBurst(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function createStarBurst(x, y) {
+            const particleCount = 30;
+            for (let i = 0; i < particleCount; i++) {
+                const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
+                const speed = 2 + Math.random() * 4;
+                starBursts.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 1,
+                    decay: 0.01 + Math.random() * 0.02,
+                    size: 2 + Math.random() * 3,
+                    hue: 120 + Math.random() * 60
+                });
+            }
+        }
+
+        // Aurora wave layers
+        class AuroraLayer {
+            constructor(yOffset, amplitude, speed, color) {
+                this.yOffset = yOffset;
+                this.amplitude = amplitude;
+                this.speed = speed;
+                this.color = color;
+                this.phase = Math.random() * Math.PI * 2;
+                this.points = [];
+                this.resolution = 5;
+            }
+
+            update(time, mouseInfluence) {
+                this.phase += this.speed;
+                this.points = [];
+
+                for (let x = 0; x <= canvas.width + this.resolution; x += this.resolution) {
+                    const baseY = canvas.height * this.yOffset;
+                    
+                    // Multiple wave frequencies
+                    const wave1 = Math.sin(x * 0.003 + this.phase) * this.amplitude;
+                    const wave2 = Math.sin(x * 0.007 + this.phase * 1.5) * this.amplitude * 0.5;
+                    const wave3 = Math.sin(x * 0.001 + this.phase * 0.5) * this.amplitude * 1.5;
+                    
+                    // Mouse influence
+                    const dx = x - mouseX;
+                    const influence = Math.exp(-(dx * dx) / 50000) * mouseInfluence * 50;
+                    
+                    const y = baseY + wave1 + wave2 + wave3 - influence;
+                    this.points.push({ x, y });
+                }
+            }
+
+            draw() {
+                if (this.points.length < 2) return;
+
+                // Create gradient for this layer
+                const gradient = ctx.createLinearGradient(0, canvas.height * this.yOffset - this.amplitude * 2, 0, canvas.height);
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(0.3, this.color);
+                gradient.addColorStop(0.7, this.color.replace(/[\d.]+\)$/, '0.3)'));
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.beginPath();
+                ctx.moveTo(this.points[0].x, canvas.height);
+                
+                for (let i = 0; i < this.points.length - 1; i++) {
+                    const p0 = this.points[i];
+                    const p1 = this.points[i + 1];
+                    const midX = (p0.x + p1.x) / 2;
+                    const midY = (p0.y + p1.y) / 2;
+                    ctx.quadraticCurveTo(p0.x, p0.y, midX, midY);
+                }
+                
+                ctx.lineTo(canvas.width, canvas.height);
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+        }
+
+        // Create aurora layers
+        const layers = [
+            new AuroraLayer(0.3, 80, 0.008, 'rgba(0, 255, 150, 0.4)'),
+            new AuroraLayer(0.35, 100, 0.012, 'rgba(0, 200, 255, 0.35)'),
+            new AuroraLayer(0.25, 60, 0.006, 'rgba(100, 255, 200, 0.3)'),
+            new AuroraLayer(0.4, 120, 0.01, 'rgba(150, 100, 255, 0.3)'),
+            new AuroraLayer(0.28, 70, 0.015, 'rgba(0, 255, 200, 0.25)')
+        ];
+
+        // Stars background
+        const stars = [];
+        for (let i = 0; i < 200; i++) {
+            stars.push({
+                x: Math.random() * 2000,
+                y: Math.random() * 1000,
+                size: Math.random() * 2,
+                twinkle: Math.random() * Math.PI * 2
+            });
+        }
+
+        function drawStars(time) {
+            stars.forEach(star => {
+                star.twinkle += 0.02;
+                const alpha = 0.3 + Math.sin(star.twinkle) * 0.3;
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.beginPath();
+                ctx.arc(star.x % canvas.width, star.y % (canvas.height * 0.6), star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Shooting stars
+        let shootingStars = [];
+
+        function maybeCreateShootingStar() {
+            if (Math.random() < 0.005 && shootingStars.length < 3) {
+                shootingStars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height * 0.3,
+                    vx: 5 + Math.random() * 10,
+                    vy: 2 + Math.random() * 5,
+                    life: 1,
+                    length: 50 + Math.random() * 100
+                });
+            }
+        }
+
+        function drawShootingStars() {
+            shootingStars = shootingStars.filter(star => {
+                star.x += star.vx;
+                star.y += star.vy;
+                star.life -= 0.02;
+
+                const gradient = ctx.createLinearGradient(
+                    star.x, star.y,
+                    star.x - star.vx * star.length / star.vx,
+                    star.y - star.vy * star.length / star.vx
+                );
+                gradient.addColorStop(0, `rgba(255, 255, 255, ${star.life})`);
+                gradient.addColorStop(1, 'transparent');
+
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(star.x, star.y);
+                ctx.lineTo(star.x - star.vx * 10, star.y - star.vy * 10);
+                ctx.stroke();
+
+                return star.life > 0;
+            });
+        }
+
+        // Update star bursts
+        function updateStarBursts() {
+            starBursts = starBursts.filter(particle => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.05; // gravity
+                particle.life -= particle.decay;
+
+                ctx.fillStyle = `hsla(${particle.hue}, 100%, 70%, ${particle.life})`;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsla(${particle.hue}, 100%, 70%, ${particle.life})`;
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size * particle.life, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                return particle.life > 0;
+            });
+        }
+
+        // Main animation loop
+        let time = 0;
+        let mouseInfluence = 0;
+
+        function animate() {
+            time++;
+
+            // Smooth mouse following
+            mouseX += (targetMouseX - mouseX) * 0.1;
+            mouseY += (targetMouseY - mouseY) * 0.1;
+            
+            // Calculate mouse influence
+            const targetInfluence = (targetMouseY < canvas.height * 0.6) ? 1 : 0;
+            mouseInfluence += (targetInfluence - mouseInfluence) * 0.05;
+
+            // Clear with gradient background
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            bgGradient.addColorStop(0, '#000510');
+            bgGradient.addColorStop(0.5, '#001020');
+            bgGradient.addColorStop(1, '#000515');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw stars
+            drawStars(time);
+            maybeCreateShootingStar();
+            drawShootingStars();
+
+            // Update and draw aurora layers
+            layers.forEach(layer => {
+                layer.update(time, mouseInfluence);
+            });
+
+            // Sort by yOffset for proper layering
+            layers.sort((a, b) => a.yOffset - b.yOffset);
+            layers.forEach(layer => layer.draw());
+
+            // Draw star bursts
+            updateStarBursts();
+
+            // Add subtle vignette
+            const vignette = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, canvas.height * 0.3,
+                canvas.width / 2, canvas.height / 2, canvas.height
+            );
+            vignette.addColorStop(0, 'transparent');
+            vignette.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+            ctx.fillStyle = vignette;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

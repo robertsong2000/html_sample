@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Rain - 矩阵雨</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: #0f0;
+            font-size: 14px;
+            opacity: 0.7;
+            z-index: 10;
+            text-shadow: 0 0 10px #0f0;
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 影响字符流向</span>
+        <span>👆 点击屏幕 - 创建能量波</span>
+    </div>
+
+    <script>
+        // Performance optimization: Use requestAnimationFrame throttling
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Matrix characters (mix of katakana, numbers, and symbols)
+        const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%^&*()';
+        const charArray = chars.split('');
+
+        // Column settings
+        const fontSize = 16;
+        let columns = Math.floor(canvas.width / fontSize);
+        let drops = [];
+
+        // Initialize drops
+        function initDrops() {
+            columns = Math.floor(canvas.width / fontSize);
+            drops = [];
+            for (let i = 0; i < columns; i++) {
+                drops[i] = Math.random() * -100;
+            }
+        }
+        initDrops();
+        window.addEventListener('resize', initDrops);
+
+        // Mouse interaction
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let mouseInfluence = 0;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            mouseInfluence = 1;
+        });
+
+        // Ripple effect on click
+        let ripples = [];
+
+        canvas.addEventListener('click', (e) => {
+            ripples.push({
+                x: e.clientX,
+                y: e.clientY,
+                radius: 0,
+                maxRadius: 300,
+                strength: 1
+            });
+        });
+
+        // FPS tracking
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+
+        // Color gradient for depth effect
+        function getColor(y, canvasHeight) {
+            const intensity = 1 - (y / canvasHeight) * 0.5;
+            const green = Math.floor(200 * intensity + 55);
+            return `rgba(0, ${green}, 0, ${intensity})`;
+        }
+
+        // Main animation loop
+        function draw(currentTime) {
+            // FPS calculation
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+
+            // Semi-transparent black for trail effect
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw ripples
+            ripples = ripples.filter(ripple => {
+                ripple.radius += 8;
+                ripple.strength *= 0.95;
+                
+                // Draw ripple
+                ctx.beginPath();
+                ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 255, 0, ${ripple.strength * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                return ripple.radius < ripple.maxRadius && ripple.strength > 0.01;
+            });
+
+            // Draw matrix rain
+            ctx.font = `${fontSize}px monospace`;
+
+            for (let i = 0; i < drops.length; i++) {
+                // Random character
+                const char = charArray[Math.floor(Math.random() * charArray.length)];
+                
+                const x = i * fontSize;
+                const y = drops[i] * fontSize;
+
+                // Mouse influence on character
+                const dx = x - mouseX;
+                const dy = y - mouseY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const influenceRadius = 200;
+                
+                let speedModifier = 1;
+                if (distance < influenceRadius && mouseInfluence > 0) {
+                    speedModifier = 0.3 + (distance / influenceRadius) * 0.7;
+                    
+                    // Characters near mouse glow brighter
+                    const glowIntensity = 1 - distance / influenceRadius;
+                    ctx.fillStyle = `rgba(100, 255, 100, ${0.8 + glowIntensity * 0.2})`;
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = '#0f0';
+                } else {
+                    ctx.fillStyle = getColor(y, canvas.height);
+                    ctx.shadowBlur = 0;
+                }
+
+                // Ripple influence
+                for (const ripple of ripples) {
+                    const rippleDx = x - ripple.x;
+                    const rippleDy = y - ripple.y;
+                    const rippleDist = Math.sqrt(rippleDx * rippleDx + rippleDy * rippleDy);
+                    
+                    if (Math.abs(rippleDist - ripple.radius) < 50) {
+                        ctx.fillStyle = `rgba(150, 255, 150, ${ripple.strength})`;
+                        speedModifier *= 0.5;
+                    }
+                }
+
+                // Draw the character
+                ctx.fillText(char, x, y);
+
+                // Reset shadow
+                ctx.shadowBlur = 0;
+
+                // Move drop down
+                drops[i] += speedModifier;
+
+                // Random reset or when off screen
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+            }
+
+            // Decay mouse influence
+            mouseInfluence *= 0.95;
+
+            // Continue animation
+            requestAnimationFrame(draw);
+        }
+
+        // Start animation
+        requestAnimationFrame(draw);
+
+        // Touch support for mobile
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            mouseInfluence = 1;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            const touch = e.touches[0];
+            ripples.push({
+                x: touch.clientX,
+                y: touch.clientY,
+                radius: 0,
+                maxRadius: 300,
+                strength: 1
+            });
+        });
+    </script>
+</body>
+</html>

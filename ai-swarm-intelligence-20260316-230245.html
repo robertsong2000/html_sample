@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Swarm Intelligence - 群体智能</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 255, 150, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="swarm"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 吸引/排斥群体</span>
+        <span>👆 点击 - 分散群体</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('swarm');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let mousePressed = false;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousedown', () => mousePressed = true);
+        canvas.addEventListener('mouseup', () => mousePressed = false);
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Click to scatter
+        canvas.addEventListener('click', (e) => {
+            scatter(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            scatter(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function scatter(x, y) {
+            boids.forEach(boid => {
+                const dx = boid.x - x;
+                const dy = boid.y - y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 200) {
+                    const force = (200 - dist) / 200 * 20;
+                    boid.vx += (dx / dist) * force;
+                    boid.vy += (dy / dist) * force;
+                }
+            });
+        }
+
+        // Boid class (flocking simulation)
+        class Boid {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.maxSpeed = 4;
+                this.maxForce = 0.1;
+                this.size = 4 + Math.random() * 4;
+                this.hue = 120 + Math.random() * 60;
+                this.trail = [];
+                this.maxTrail = 8;
+            }
+
+            // Calculate separation force
+            separate(boids) {
+                const desiredSeparation = 30;
+                let steerX = 0, steerY = 0;
+                let count = 0;
+
+                boids.forEach(other => {
+                    const dx = this.x - other.x;
+                    const dy = this.y - other.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 0 && dist < desiredSeparation) {
+                        steerX += dx / dist;
+                        steerY += dy / dist;
+                        count++;
+                    }
+                });
+
+                if (count > 0) {
+                    steerX /= count;
+                    steerY /= count;
+                    const mag = Math.sqrt(steerX * steerX + steerY * steerY);
+                    if (mag > 0) {
+                        steerX = (steerX / mag) * this.maxSpeed - this.vx;
+                        steerY = (steerY / mag) * this.maxSpeed - this.vy;
+                    }
+                }
+
+                return { x: steerX * 1.5, y: steerY * 1.5 };
+            }
+
+            // Calculate alignment force
+            align(boids) {
+                const neighborDist = 80;
+                let sumX = 0, sumY = 0;
+                let count = 0;
+
+                boids.forEach(other => {
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 0 && dist < neighborDist) {
+                        sumX += other.vx;
+                        sumY += other.vy;
+                        count++;
+                    }
+                });
+
+                if (count > 0) {
+                    sumX /= count;
+                    sumY /= count;
+                    const mag = Math.sqrt(sumX * sumX + sumY * sumY);
+                    if (mag > 0) {
+                        sumX = (sumX / mag) * this.maxSpeed;
+                        sumY = (sumY / mag) * this.maxSpeed;
+                    }
+                    return { x: (sumX - this.vx) * 1, y: (sumY - this.vy) * 1 };
+                }
+
+                return { x: 0, y: 0 };
+            }
+
+            // Calculate cohesion force
+            cohesion(boids) {
+                const neighborDist = 100;
+                let sumX = 0, sumY = 0;
+                let count = 0;
+
+                boids.forEach(other => {
+                    const dx = other.x - this.x;
+                    const dy = other.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist > 0 && dist < neighborDist) {
+                        sumX += other.x;
+                        sumY += other.y;
+                        count++;
+                    }
+                });
+
+                if (count > 0) {
+                    sumX /= count;
+                    sumY /= count;
+                    return this.seek(sumX, sumY);
+                }
+
+                return { x: 0, y: 0 };
+            }
+
+            // Seek target
+            seek(targetX, targetY) {
+                let desiredX = targetX - this.x;
+                let desiredY = targetY - this.y;
+                const mag = Math.sqrt(desiredX * desiredX + desiredY * desiredY);
+
+                if (mag > 0) {
+                    desiredX = (desiredX / mag) * this.maxSpeed;
+                    desiredY = (desiredY / mag) * this.maxSpeed;
+                }
+
+                let steerX = desiredX - this.vx;
+                let steerY = desiredY - this.vy;
+
+                const steerMag = Math.sqrt(steerX * steerX + steerY * steerY);
+                if (steerMag > this.maxForce) {
+                    steerX = (steerX / steerMag) * this.maxForce;
+                    steerY = (steerY / steerMag) * this.maxForce;
+                }
+
+                return { x: steerX, y: steerY };
+            }
+
+            update(boids) {
+                // Store trail
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // Flocking forces
+                const sep = this.separate(boids);
+                const ali = this.align(boids);
+                const coh = this.cohesion(boids);
+
+                // Apply forces
+                this.vx += sep.x + ali.x + coh.y;
+                this.vy += sep.y + ali.y + coh.y;
+
+                // Mouse influence
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const mouseRadius = 200;
+
+                if (dist < mouseRadius) {
+                    const force = (mouseRadius - dist) / mouseRadius;
+                    if (mousePressed) {
+                        // Repel
+                        this.vx -= (dx / dist) * force * 3;
+                        this.vy -= (dy / dist) * force * 3;
+                    } else {
+                        // Attract
+                        this.vx += (dx / dist) * force * 0.5;
+                        this.vy += (dy / dist) * force * 0.5;
+                    }
+                }
+
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wrap around edges
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                // Update hue based on speed
+                this.hue = 120 + speed * 10;
+            }
+
+            draw() {
+                // Draw trail
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, 0.2)`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+
+                // Draw boid as triangle pointing in direction of velocity
+                const angle = Math.atan2(this.vy, this.vx);
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const alpha = 0.5 + speed / this.maxSpeed * 0.5;
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(angle);
+
+                ctx.beginPath();
+                ctx.moveTo(this.size * 2, 0);
+                ctx.lineTo(-this.size, -this.size);
+                ctx.lineTo(-this.size * 0.5, 0);
+                ctx.lineTo(-this.size, this.size);
+                ctx.closePath();
+
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, ${alpha})`;
+                ctx.fill();
+
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        // Create boids
+        const boids = [];
+        const boidCount = 100;
+        for (let i = 0; i < boidCount; i++) {
+            boids.push(new Boid());
+        }
+
+        // Predator class
+        class Predator {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.maxSpeed = 2;
+                this.size = 12;
+                this.hue = 0;
+            }
+
+            update(boids) {
+                // Find nearest boid
+                let nearestDist = Infinity;
+                let nearestBoid = null;
+
+                boids.forEach(boid => {
+                    const dx = boid.x - this.x;
+                    const dy = boid.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < nearestDist) {
+                        nearestDist = dist;
+                        nearestBoid = boid;
+                    }
+                });
+
+                // Chase nearest boid
+                if (nearestBoid) {
+                    const dx = nearestBoid.x - this.x;
+                    const dy = nearestBoid.y - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist > 0) {
+                        this.vx += (dx / dist) * 0.05;
+                        this.vy += (dy / dist) * 0.05;
+                    }
+                }
+
+                // Limit speed
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > this.maxSpeed) {
+                    this.vx = (this.vx / speed) * this.maxSpeed;
+                    this.vy = (this.vy / speed) * this.maxSpeed;
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wrap
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+            }
+
+            draw() {
+                const angle = Math.atan2(this.vy, this.vx);
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(angle);
+
+                ctx.beginPath();
+                ctx.moveTo(this.size * 2, 0);
+                ctx.lineTo(-this.size, -this.size);
+                ctx.lineTo(-this.size, this.size);
+                ctx.closePath();
+
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 50%, 0.8)`;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 50%)`;
+                ctx.fill();
+
+                ctx.restore();
+            }
+        }
+
+        const predators = [];
+        for (let i = 0; i < 2; i++) {
+            predators.push(new Predator());
+        }
+
+        // Animation loop
+        let time = 0;
+
+        function animate() {
+            time++;
+
+            // Clear with fade
+            ctx.fillStyle = 'rgba(5, 10, 15, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update and draw predators
+            predators.forEach(predator => {
+                predator.update(boids);
+                predator.draw();
+            });
+
+            // Update and draw boids
+            boids.forEach(boid => {
+                boid.update(boids);
+                boid.draw();
+            });
+
+            // Mouse indicator
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = mousePressed ? 'rgba(255, 100, 100, 0.5)' : 'rgba(100, 255, 150, 0.3)';
+            ctx.fill();
+
+            // Stats
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Boids: ${boidCount}`, 10, canvas.height - 10);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initial clear
+        ctx.fillStyle = '#050a0f';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Black Hole - 黑洞</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 100, 50, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="blackhole"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 控制黑洞位置</span>
+        <span>👆 点击 - 吸入物质爆发</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('blackhole');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Matter particle class
+        class MatterParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                // Spawn from edges
+                const side = Math.floor(Math.random() * 4);
+                switch (side) {
+                    case 0: // Top
+                        this.x = Math.random() * canvas.width;
+                        this.y = -10;
+                        break;
+                    case 1: // Right
+                        this.x = canvas.width + 10;
+                        this.y = Math.random() * canvas.height;
+                        break;
+                    case 2: // Bottom
+                        this.x = Math.random() * canvas.width;
+                        this.y = canvas.height + 10;
+                        break;
+                    case 3: // Left
+                        this.x = -10;
+                        this.y = Math.random() * canvas.height;
+                        break;
+                }
+
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.size = 1 + Math.random() * 3;
+                this.hue = Math.random() * 60 + 20; // Orange to yellow
+                this.life = 1;
+                this.trail = [];
+                this.maxTrail = 20;
+                this.absorbed = false;
+            }
+
+            update(blackHoleX, blackHoleY, blackHoleMass) {
+                // Store trail
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // Calculate distance to black hole
+                const dx = blackHoleX - this.x;
+                const dy = blackHoleY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Gravitational pull
+                const force = blackHoleMass / (dist * dist) * 100;
+                const angle = Math.atan2(dy, dx);
+
+                // Add orbital velocity for spiraling effect
+                const perpAngle = angle + Math.PI / 2;
+                const orbitalSpeed = Math.sqrt(blackHoleMass / dist) * 0.5;
+
+                this.vx += Math.cos(angle) * force + Math.cos(perpAngle) * orbitalSpeed * 0.1;
+                this.vy += Math.sin(angle) * force + Math.sin(perpAngle) * orbitalSpeed * 0.1;
+
+                // Damping
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Check if absorbed
+                if (dist < 30) {
+                    this.absorbed = true;
+                    this.life -= 0.1;
+                }
+
+                // Check if out of bounds
+                if (this.x < -100 || this.x > canvas.width + 100 ||
+                    this.y < -100 || this.y > canvas.height + 100) {
+                    this.reset();
+                }
+
+                // Color shift based on velocity (redshift/blueshift)
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                this.hue = 30 + speed * 2;
+            }
+
+            draw() {
+                if (this.life <= 0) return;
+
+                // Draw trail
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    const gradient = ctx.createLinearGradient(
+                        this.trail[0].x, this.trail[0].y,
+                        this.x, this.y
+                    );
+                    gradient.addColorStop(0, 'transparent');
+                    gradient.addColorStop(1, `hsla(${this.hue}, 80%, 60%, ${this.life * 0.5})`);
+                    ctx.strokeStyle = gradient;
+                    ctx.lineWidth = this.size * 0.5;
+                    ctx.stroke();
+                }
+
+                // Draw particle
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, 80%, 70%)`;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // Create matter particles
+        const particles = [];
+        const particleCount = 150;
+        for (let i = 0; i < particleCount; i++) {
+            const p = new MatterParticle();
+            p.x = Math.random() * canvas.width;
+            p.y = Math.random() * canvas.height;
+            particles.push(p);
+        }
+
+        // Accretion disk particle
+        class AccretionParticle {
+            constructor(centerX, centerY) {
+                this.centerX = centerX;
+                this.centerY = centerY;
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = 40 + Math.random() * 80;
+                this.speed = 0.02 + Math.random() * 0.03;
+                this.size = 1 + Math.random() * 2;
+                this.hue = 20 + Math.random() * 40;
+                this.alpha = 0.5 + Math.random() * 0.5;
+                this.wobble = Math.random() * Math.PI * 2;
+            }
+
+            update(centerX, centerY) {
+                this.centerX = centerX;
+                this.centerY = centerY;
+                this.angle += this.speed;
+                this.wobble += 0.05;
+                this.radius -= 0.02;
+
+                if (this.radius < 35) {
+                    this.radius = 40 + Math.random() * 80;
+                    this.angle = Math.random() * Math.PI * 2;
+                }
+            }
+
+            draw() {
+                const wobbleRadius = this.radius + Math.sin(this.wobble) * 5;
+                const x = this.centerX + Math.cos(this.angle) * wobbleRadius;
+                const y = this.centerY + Math.sin(this.angle) * wobbleRadius * 0.3; // Flatten for perspective
+
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = `hsl(${this.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(x, y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, 100%, 70%)`;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Create accretion disk
+        const accretionParticles = [];
+        for (let i = 0; i < 200; i++) {
+            accretionParticles.push(new AccretionParticle(canvas.width / 2, canvas.height / 2));
+        }
+
+        // Stars background
+        const stars = [];
+        for (let i = 0; i < 200; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 1.5,
+                alpha: Math.random() * 0.5,
+                twinkle: Math.random() * Math.PI * 2
+            });
+        }
+
+        function drawStars() {
+            stars.forEach(star => {
+                star.twinkle += 0.05;
+                const alpha = star.alpha * (0.5 + Math.sin(star.twinkle) * 0.5);
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+        }
+
+        // Draw black hole
+        function drawBlackHole(x, y, time) {
+            // Gravitational lensing effect (distortion ring)
+            const lensRadius = 120;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, lensRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = `rgba(255, 150, 50, ${0.1 + Math.sin(time * 0.05) * 0.05})`;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+
+            // Event horizon glow
+            const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, 100);
+            glowGradient.addColorStop(0, 'rgba(0, 0, 0, 1)');
+            glowGradient.addColorStop(0.3, 'rgba(20, 10, 5, 0.8)');
+            glowGradient.addColorStop(0.6, 'rgba(50, 25, 10, 0.3)');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient;
+            ctx.beginPath();
+            ctx.arc(x, y, 100, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Inner black circle (event horizon)
+            ctx.beginPath();
+            ctx.arc(x, y, 30, 0, Math.PI * 2);
+            ctx.fillStyle = '#000';
+            ctx.fill();
+
+            // Photon sphere
+            ctx.beginPath();
+            ctx.arc(x, y, 35, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(255, 100, 50, 0.3)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // Burst effect on click
+        let bursts = [];
+
+        canvas.addEventListener('click', (e) => {
+            createBurst(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createBurst(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function createBurst(x, y) {
+            for (let i = 0; i < 30; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 3 + Math.random() * 5;
+                bursts.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 2 + Math.random() * 4,
+                    life: 1,
+                    hue: Math.random() * 60 + 20
+                });
+            }
+        }
+
+        function updateBursts() {
+            bursts = bursts.filter(b => {
+                b.x += b.vx;
+                b.y += b.vy;
+                b.vx *= 0.98;
+                b.vy *= 0.98;
+                b.life -= 0.02;
+
+                if (b.life > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = b.life;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = `hsl(${b.hue}, 80%, 60%)`;
+                    ctx.beginPath();
+                    ctx.arc(b.x, b.y, b.size * b.life, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsl(${b.hue}, 80%, 70%)`;
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                return b.life > 0;
+            });
+        }
+
+        // Animation loop
+        let time = 0;
+        const blackHoleMass = 50;
+
+        function animate() {
+            time++;
+
+            // Clear
+            ctx.fillStyle = 'rgba(0, 0, 5, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw stars
+            drawStars();
+
+            // Black hole follows mouse with delay
+            const bhX = mouseX;
+            const bhY = mouseY;
+
+            // Update and draw accretion disk
+            accretionParticles.forEach(p => {
+                p.update(bhX, bhY);
+                p.draw();
+            });
+
+            // Draw black hole
+            drawBlackHole(bhX, bhY, time);
+
+            // Update and draw matter particles
+            particles.forEach(p => {
+                p.update(bhX, bhY, blackHoleMass);
+                p.draw();
+                if (p.isDead()) {
+                    p.reset();
+                }
+            });
+
+            // Update bursts
+            updateBursts();
+
+            // Stats
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Particles: ${particleCount}`, 10, canvas.height - 10);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initial clear
+        ctx.fillStyle = '#000005';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Animation - 粒子动画</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(150, 100, 255, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="particles"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 粒子吸引/排斥</span>
+        <span>👆 点击 - 粒子爆发</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('particles');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let mousePressed = false;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousedown', () => mousePressed = true);
+        canvas.addEventListener('mouseup', () => mousePressed = false);
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createBurst(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        // Click for burst
+        canvas.addEventListener('click', (e) => {
+            createBurst(e.clientX, e.clientY);
+        });
+
+        // Burst particles
+        let burstParticles = [];
+
+        function createBurst(x, y) {
+            for (let i = 0; i < 100; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 8;
+                burstParticles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 2 + Math.random() * 4,
+                    life: 1,
+                    hue: Math.random() * 360,
+                    decay: 0.01 + Math.random() * 0.02
+                });
+            }
+        }
+
+        // Particle class
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.size = 1 + Math.random() * 3;
+                this.baseSize = this.size;
+                this.hue = Math.random() * 360;
+                this.saturation = 70 + Math.random() * 30;
+                this.lightness = 50 + Math.random() * 20;
+                this.alpha = 0.5 + Math.random() * 0.5;
+                this.pulse = Math.random() * Math.PI * 2;
+                this.pulseSpeed = 0.02 + Math.random() * 0.05;
+            }
+
+            update(time) {
+                // Pulse effect
+                this.pulse += this.pulseSpeed;
+                this.size = this.baseSize + Math.sin(this.pulse) * this.baseSize * 0.3;
+
+                // Mouse interaction
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const maxDistance = 200;
+
+                if (distance < maxDistance) {
+                    const force = (maxDistance - distance) / maxDistance;
+                    const angle = Math.atan2(dy, dx);
+                    
+                    if (mousePressed) {
+                        // Repel
+                        this.vx -= Math.cos(angle) * force * 2;
+                        this.vy -= Math.sin(angle) * force * 2;
+                    } else {
+                        // Attract
+                        this.vx += Math.cos(angle) * force * 0.5;
+                        this.vy += Math.sin(angle) * force * 0.5;
+                    }
+                }
+
+                // Apply velocity
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Damping
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+
+                // Boundary wrap
+                if (this.x < 0) this.x = canvas.width;
+                if (this.x > canvas.width) this.x = 0;
+                if (this.y < 0) this.y = canvas.height;
+                if (this.y > canvas.height) this.y = 0;
+
+                // Color shift
+                this.hue = (this.hue + 0.1) % 360;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness}%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, ${this.saturation}%, ${this.lightness}%)`;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Connection lines between nearby particles
+        function drawConnections(particles) {
+            const maxDistance = 100;
+            
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < maxDistance) {
+                        const alpha = (1 - distance / maxDistance) * 0.3;
+                        const hue = (particles[i].hue + particles[j].hue) / 2;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `hsla(${hue}, 70%, 60%, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Create particles
+        const particles = [];
+        const particleCount = 150;
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new Particle());
+        }
+
+        // Orbital particles
+        class OrbitalParticle {
+            constructor(centerX, centerY) {
+                this.centerX = centerX;
+                this.centerY = centerY;
+                this.angle = Math.random() * Math.PI * 2;
+                this.radius = 50 + Math.random() * 150;
+                this.speed = 0.005 + Math.random() * 0.02;
+                this.size = 2 + Math.random() * 3;
+                this.hue = Math.random() * 360;
+                this.wobble = Math.random() * Math.PI * 2;
+            }
+
+            update(time) {
+                this.angle += this.speed;
+                this.wobble += 0.02;
+                
+                // Wobble radius
+                const wobbleRadius = this.radius + Math.sin(this.wobble) * 20;
+                
+                this.x = this.centerX + Math.cos(this.angle) * wobbleRadius;
+                this.y = this.centerY + Math.sin(this.angle) * wobbleRadius;
+
+                // Update center based on mouse
+                this.centerX += (mouseX - this.centerX) * 0.01;
+                this.centerY += (mouseY - this.centerY) * 0.01;
+
+                this.hue = (this.hue + 0.5) % 360;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, 80%, 70%)`;
+                ctx.fill();
+                ctx.restore();
+
+                // Trail
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 80%, 60%, 0.2)`;
+                ctx.fill();
+            }
+        }
+
+        // Create orbital particles
+        const orbitalParticles = [];
+        for (let i = 0; i < 20; i++) {
+            orbitalParticles.push(new OrbitalParticle(canvas.width / 2, canvas.height / 2));
+        }
+
+        // Floating geometric shapes
+        class Shape {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02;
+                this.size = 10 + Math.random() * 20;
+                this.sides = [3, 4, 5, 6][Math.floor(Math.random() * 4)];
+                this.hue = Math.random() * 360;
+                this.alpha = 0.1 + Math.random() * 0.2;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.rotation += this.rotationSpeed;
+
+                if (this.x < -this.size) this.x = canvas.width + this.size;
+                if (this.x > canvas.width + this.size) this.x = -this.size;
+                if (this.y < -this.size) this.y = canvas.height + this.size;
+                if (this.y > canvas.height + this.size) this.y = -this.size;
+
+                this.hue = (this.hue + 0.2) % 360;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.alpha;
+                ctx.strokeStyle = `hsl(${this.hue}, 70%, 60%)`;
+                ctx.lineWidth = 2;
+
+                ctx.beginPath();
+                for (let i = 0; i < this.sides; i++) {
+                    const angle = (i * Math.PI * 2) / this.sides;
+                    const x = Math.cos(angle) * this.size;
+                    const y = Math.sin(angle) * this.size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.stroke();
+
+                ctx.restore();
+            }
+        }
+
+        // Create shapes
+        const shapes = [];
+        for (let i = 0; i < 10; i++) {
+            shapes.push(new Shape());
+        }
+
+        // Background gradient
+        function drawBackground() {
+            const gradient = ctx.createRadialGradient(
+                mouseX, mouseY, 0,
+                mouseX, mouseY, canvas.width
+            );
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(0.5, '#0f0f1a');
+            gradient.addColorStop(1, '#050510');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // Update burst particles
+        function updateBurstParticles() {
+            burstParticles = burstParticles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.05; // gravity
+                p.vx *= 0.99;
+                p.life -= p.decay;
+
+                if (p.life > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = p.life;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = `hsl(${p.hue}, 80%, 60%)`;
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+                    ctx.fillStyle = `hsl(${p.hue}, 80%, 70%)`;
+                    ctx.fill();
+                    ctx.restore();
+                }
+
+                return p.life > 0;
+            });
+        }
+
+        // Mouse glow
+        function drawMouseGlow() {
+            const gradient = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 150);
+            gradient.addColorStop(0, 'rgba(100, 100, 255, 0.1)');
+            gradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(mouseX - 150, mouseY - 150, 300, 300);
+        }
+
+        // Animation loop
+        let time = 0;
+
+        function animate() {
+            time++;
+
+            // Draw background
+            drawBackground();
+
+            // Draw mouse glow
+            drawMouseGlow();
+
+            // Draw shapes
+            shapes.forEach(shape => {
+                shape.update();
+                shape.draw();
+            });
+
+            // Draw connections
+            drawConnections(particles);
+
+            // Update and draw particles
+            particles.forEach(particle => {
+                particle.update(time);
+                particle.draw();
+            });
+
+            // Update and draw orbital particles
+            orbitalParticles.forEach(particle => {
+                particle.update(time);
+                particle.draw();
+            });
+
+            // Update burst particles
+            updateBurstParticles();
+
+            // Info display
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Particles: ${particles.length + orbitalParticles.length}`, 10, canvas.height - 10);
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

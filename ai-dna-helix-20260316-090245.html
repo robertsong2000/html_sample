@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNA Helix - DNA螺旋</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="dna"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 影响螺旋旋转</span>
+        <span>👆 点击 - 创建基因突变效果</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('dna');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Mutation particles
+        let mutations = [];
+
+        canvas.addEventListener('click', (e) => {
+            createMutation(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createMutation(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function createMutation(x, y) {
+            for (let i = 0; i < 30; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 5;
+                mutations.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 3 + Math.random() * 5,
+                    life: 1,
+                    hue: Math.random() * 60 + 160,
+                    type: ['A', 'T', 'G', 'C'][Math.floor(Math.random() * 4)]
+                });
+            }
+        }
+
+        // DNA Base pairs
+        const basePairs = [
+            { a: 'A', b: 'T', colorA: '#ff6b6b', colorB: '#4ecdc4' },
+            { a: 'T', b: 'A', colorA: '#4ecdc4', colorB: '#ff6b6b' },
+            { a: 'G', b: 'C', colorA: '#ffe66d', colorB: '#a55eea' },
+            { a: 'C', b: 'G', colorA: '#a55eea', colorB: '#ffe66d' }
+        ];
+
+        // DNA Helix class
+        class DNAHelix {
+            constructor() {
+                this.nodes = [];
+                this.nodeCount = 60;
+                this.verticalSpacing = 25;
+                this.baseRadius = 80;
+                this.rotationSpeed = 0.02;
+                this.rotation = 0;
+
+                // Initialize nodes
+                for (let i = 0; i < this.nodeCount; i++) {
+                    const basePair = basePairs[Math.floor(Math.random() * basePairs.length)];
+                    this.nodes.push({
+                        angle: (i * 0.3),
+                        y: 0,
+                        basePair: basePair,
+                        pulse: Math.random() * Math.PI * 2,
+                        highlighted: false
+                    });
+                }
+            }
+
+            update(time) {
+                // Mouse influence on rotation
+                const centerX = canvas.width / 2;
+                const mouseOffset = (mouseX - centerX) / centerX;
+                this.rotation += this.rotationSpeed + mouseOffset * 0.01;
+
+                // Update nodes
+                this.nodes.forEach((node, index) => {
+                    node.angle = index * 0.3 + this.rotation;
+                    node.y = (index * this.verticalSpacing - (this.nodeCount * this.verticalSpacing) / 2 + time * 30) % (canvas.height + this.verticalSpacing * 2) - this.verticalSpacing;
+                    node.pulse += 0.05;
+
+                    // Check mouse proximity
+                    const nodeX = centerX + Math.cos(node.angle) * this.baseRadius;
+                    const dy = Math.abs(node.y - mouseY);
+                    node.highlighted = dy < 30 && Math.abs(nodeX - mouseX) < 50;
+                });
+            }
+
+            draw() {
+                const centerX = canvas.width / 2;
+
+                // Draw backbones and connections
+                for (let i = 0; i < this.nodes.length - 1; i++) {
+                    const node = this.nodes[i];
+                    const nextNode = this.nodes[i + 1];
+
+                    // Calculate positions for both strands
+                    const x1 = centerX + Math.cos(node.angle) * this.baseRadius;
+                    const x2 = centerX + Math.cos(node.angle + Math.PI) * this.baseRadius;
+                    const x1Next = centerX + Math.cos(nextNode.angle) * this.baseRadius;
+                    const x2Next = centerX + Math.cos(nextNode.angle + Math.PI) * this.baseRadius;
+
+                    // Determine depth (which strand is in front)
+                    const z1 = Math.sin(node.angle);
+                    const z2 = Math.sin(node.angle + Math.PI);
+
+                    // Draw connection (base pair)
+                    if (Math.abs(z1) < 0.7) {
+                        const alpha = 0.3 + Math.abs(z1) * 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, node.y);
+                        ctx.lineTo(x2, node.y);
+                        ctx.strokeStyle = `rgba(100, 200, 255, ${alpha * 0.3})`;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+
+                        // Draw base letters
+                        if (node.highlighted) {
+                            ctx.font = 'bold 14px monospace';
+                            ctx.fillStyle = node.basePair.colorA;
+                            ctx.textAlign = 'center';
+                            ctx.fillText(node.basePair.a, x1, node.y + 5);
+                            ctx.fillStyle = node.basePair.colorB;
+                            ctx.fillText(node.basePair.b, x2, node.y + 5);
+                        }
+                    }
+
+                    // Draw backbone segments
+                    // Strand 1
+                    const alpha1 = 0.3 + (z1 + 1) * 0.35;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, node.y);
+                    ctx.lineTo(x1Next, nextNode.y);
+                    ctx.strokeStyle = `rgba(100, 150, 255, ${alpha1})`;
+                    ctx.lineWidth = z1 > 0 ? 4 : 2;
+                    ctx.stroke();
+
+                    // Strand 2
+                    const alpha2 = 0.3 + (z2 + 1) * 0.35;
+                    ctx.beginPath();
+                    ctx.moveTo(x2, node.y);
+                    ctx.lineTo(x2Next, nextNode.y);
+                    ctx.strokeStyle = `rgba(255, 100, 150, ${alpha2})`;
+                    ctx.lineWidth = z2 > 0 ? 4 : 2;
+                    ctx.stroke();
+                }
+
+                // Draw nodes (nucleotides)
+                this.nodes.forEach((node, index) => {
+                    const x1 = centerX + Math.cos(node.angle) * this.baseRadius;
+                    const x2 = centerX + Math.cos(node.angle + Math.PI) * this.baseRadius;
+                    const z1 = Math.sin(node.angle);
+                    const z2 = Math.sin(node.angle + Math.PI);
+
+                    const pulseSize = Math.sin(node.pulse) * 2;
+
+                    // Node 1
+                    if (z1 > -0.3) {
+                        const size = (4 + pulseSize) * (0.7 + z1 * 0.3);
+                        ctx.save();
+                        ctx.globalAlpha = 0.5 + z1 * 0.5;
+                        ctx.shadowBlur = node.highlighted ? 20 : 10;
+                        ctx.shadowColor = node.basePair.colorA;
+                        ctx.beginPath();
+                        ctx.arc(x1, node.y, Math.max(size, 2), 0, Math.PI * 2);
+                        ctx.fillStyle = node.basePair.colorA;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+
+                    // Node 2
+                    if (z2 > -0.3) {
+                        const size = (4 + pulseSize) * (0.7 + z2 * 0.3);
+                        ctx.save();
+                        ctx.globalAlpha = 0.5 + z2 * 0.5;
+                        ctx.shadowBlur = node.highlighted ? 20 : 10;
+                        ctx.shadowColor = node.basePair.colorB;
+                        ctx.beginPath();
+                        ctx.arc(x2, node.y, Math.max(size, 2), 0, Math.PI * 2);
+                        ctx.fillStyle = node.basePair.colorB;
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                });
+            }
+        }
+
+        // Particle background
+        const bgParticles = [];
+        for (let i = 0; i < 100; i++) {
+            bgParticles.push({
+                x: Math.random() * 2000,
+                y: Math.random() * 2000,
+                size: Math.random() * 2,
+                speed: 0.2 + Math.random() * 0.5,
+                alpha: Math.random() * 0.5
+            });
+        }
+
+        function drawBackground(time) {
+            // Gradient background
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width
+            );
+            gradient.addColorStop(0, '#0a0a20');
+            gradient.addColorStop(1, '#000005');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Floating particles
+            bgParticles.forEach(p => {
+                p.y -= p.speed;
+                if (p.y < 0) p.y = canvas.height;
+
+                ctx.beginPath();
+                ctx.arc(p.x % canvas.width, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(100, 200, 255, ${p.alpha})`;
+                ctx.fill();
+            });
+        }
+
+        function updateMutations() {
+            mutations = mutations.filter(m => {
+                m.x += m.vx;
+                m.y += m.vy;
+                m.vy += 0.1;
+                m.life -= 0.015;
+                m.size *= 0.99;
+
+                // Draw mutation particle
+                ctx.save();
+                ctx.globalAlpha = m.life;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = `hsl(${m.hue}, 100%, 60%)`;
+                ctx.font = `bold ${m.size * 3}px monospace`;
+                ctx.fillStyle = `hsl(${m.hue}, 100%, 70%)`;
+                ctx.textAlign = 'center';
+                ctx.fillText(m.type, m.x, m.y);
+                ctx.restore();
+
+                return m.life > 0;
+            });
+        }
+
+        // Create DNA helix
+        const dnaHelix = new DNAHelix();
+
+        // Animation loop
+        let time = 0;
+
+        function animate() {
+            time += 0.016;
+
+            drawBackground(time);
+            dnaHelix.update(time);
+            dnaHelix.draw();
+            updateMutations();
+
+            // Draw glow effect in center
+            const glowGradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, 200
+            );
+            glowGradient.addColorStop(0, 'rgba(100, 150, 255, 0.1)');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geometric Kaleidoscope - 几何万花筒</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 100, 200, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="kaleidoscope"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 改变图案对称性</span>
+        <span>👆 点击 - 爆发新形状</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('kaleidoscope');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Burst particles
+        let bursts = [];
+
+        canvas.addEventListener('click', (e) => {
+            createBurst(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createBurst(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function createBurst(x, y) {
+            const shapes = ['triangle', 'square', 'pentagon', 'hexagon', 'star'];
+            for (let i = 0; i < 20; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 6;
+                bursts.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    rotation: Math.random() * Math.PI * 2,
+                    rotationSpeed: (Math.random() - 0.5) * 0.2,
+                    size: 10 + Math.random() * 20,
+                    life: 1,
+                    hue: Math.random() * 360,
+                    shape: shapes[Math.floor(Math.random() * shapes.length)]
+                });
+            }
+        }
+
+        // Shape drawing functions
+        function drawPolygon(x, y, radius, sides, rotation) {
+            ctx.beginPath();
+            for (let i = 0; i < sides; i++) {
+                const angle = rotation + (i * 2 * Math.PI) / sides;
+                const px = x + Math.cos(angle) * radius;
+                const py = y + Math.sin(angle) * radius;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+        }
+
+        function drawStar(x, y, radius, points, rotation) {
+            ctx.beginPath();
+            for (let i = 0; i < points * 2; i++) {
+                const r = i % 2 === 0 ? radius : radius * 0.5;
+                const angle = rotation + (i * Math.PI) / points;
+                const px = x + Math.cos(angle) * r;
+                const py = y + Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+        }
+
+        // Kaleidoscope segments
+        class KaleidoSegment {
+            constructor() {
+                this.shapes = [];
+                this.generateShapes();
+            }
+
+            generateShapes() {
+                const shapeCount = 5 + Math.floor(Math.random() * 10);
+                for (let i = 0; i < shapeCount; i++) {
+                    this.shapes.push({
+                        distance: 50 + Math.random() * 200,
+                        angle: Math.random() * Math.PI / 6,
+                        size: 10 + Math.random() * 30,
+                        rotation: Math.random() * Math.PI * 2,
+                        rotationSpeed: (Math.random() - 0.5) * 0.03,
+                        sides: [3, 4, 5, 6, 8][Math.floor(Math.random() * 5)],
+                        hue: Math.random() * 360,
+                        pulsePhase: Math.random() * Math.PI * 2,
+                        orbitSpeed: (Math.random() - 0.5) * 0.01
+                    });
+                }
+            }
+
+            update(time, mouseInfluence) {
+                this.shapes.forEach(shape => {
+                    shape.rotation += shape.rotationSpeed;
+                    shape.angle += shape.orbitSpeed * mouseInfluence;
+                    shape.pulsePhase += 0.05;
+                });
+            }
+
+            draw(centerX, centerY, symmetry) {
+                const segments = Math.floor(6 + symmetry * 6);
+
+                for (let seg = 0; seg < segments; seg++) {
+                    const segAngle = (seg * 2 * Math.PI) / segments;
+                    const mirror = seg % 2 === 1;
+
+                    ctx.save();
+                    ctx.translate(centerX, centerY);
+                    ctx.rotate(segAngle);
+                    if (mirror) ctx.scale(-1, 1);
+
+                    this.shapes.forEach(shape => {
+                        const pulseSize = shape.size + Math.sin(shape.pulsePhase) * 5;
+                        const x = Math.cos(shape.angle) * shape.distance;
+                        const y = Math.sin(shape.angle) * shape.distance;
+
+                        ctx.save();
+                        ctx.globalAlpha = 0.7;
+                        ctx.strokeStyle = `hsla(${shape.hue}, 80%, 60%, 0.8)`;
+                        ctx.fillStyle = `hsla(${shape.hue}, 80%, 50%, 0.3)`;
+                        ctx.lineWidth = 2;
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = `hsla(${shape.hue}, 80%, 60%, 0.5)`;
+
+                        drawPolygon(x, y, pulseSize, shape.sides, shape.rotation);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.restore();
+                    });
+
+                    ctx.restore();
+                }
+            }
+        }
+
+        // Create kaleidoscope
+        const kaleidoscope = new KaleidoSegment();
+
+        // Background particles
+        const bgParticles = [];
+        for (let i = 0; i < 80; i++) {
+            bgParticles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 3,
+                hue: Math.random() * 360,
+                speed: 0.5 + Math.random() * 1.5,
+                angle: Math.random() * Math.PI * 2
+            });
+        }
+
+        function drawBackground(time) {
+            // Dark gradient
+            const gradient = ctx.createRadialGradient(
+                canvas.width / 2, canvas.height / 2, 0,
+                canvas.width / 2, canvas.height / 2, canvas.width
+            );
+            gradient.addColorStop(0, '#1a0a2e');
+            gradient.addColorStop(0.5, '#0d0d1a');
+            gradient.addColorStop(1, '#000');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Floating particles
+            bgParticles.forEach(p => {
+                p.x += Math.cos(p.angle) * p.speed;
+                p.y += Math.sin(p.angle) * p.speed;
+                p.angle += 0.01;
+
+                if (p.x < 0) p.x = canvas.width;
+                if (p.x > canvas.width) p.x = 0;
+                if (p.y < 0) p.y = canvas.height;
+                if (p.y > canvas.height) p.y = 0;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, 70%, 60%, 0.5)`;
+                ctx.fill();
+            });
+        }
+
+        function updateBursts() {
+            bursts = bursts.filter(b => {
+                b.x += b.vx;
+                b.y += b.vy;
+                b.vx *= 0.98;
+                b.vy *= 0.98;
+                b.rotation += b.rotationSpeed;
+                b.life -= 0.01;
+
+                ctx.save();
+                ctx.globalAlpha = b.life;
+                ctx.strokeStyle = `hsla(${b.hue}, 80%, 60%, ${b.life})`;
+                ctx.fillStyle = `hsla(${b.hue}, 80%, 50%, ${b.life * 0.3})`;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = `hsla(${b.hue}, 80%, 60%, ${b.life})`;
+
+                if (b.shape === 'star') {
+                    drawStar(b.x, b.y, b.size, 5, b.rotation);
+                } else {
+                    const sides = { triangle: 3, square: 4, pentagon: 5, hexagon: 6 }[b.shape];
+                    drawPolygon(b.x, b.y, b.size, sides, b.rotation);
+                }
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+
+                return b.life > 0;
+            });
+        }
+
+        // Animation
+        let time = 0;
+
+        function animate() {
+            time++;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Calculate mouse influence (0-1)
+            const mouseDistance = Math.sqrt(
+                Math.pow(mouseX - centerX, 2) + Math.pow(mouseY - centerY, 2)
+            );
+            const maxDistance = Math.sqrt(centerX * centerX + centerY * centerY);
+            const mouseInfluence = mouseDistance / maxDistance;
+
+            // Calculate symmetry based on mouse Y
+            const symmetry = (mouseY / canvas.height);
+
+            drawBackground(time);
+            kaleidoscope.update(time, mouseInfluence);
+            kaleidoscope.draw(centerX, centerY, symmetry);
+            updateBursts();
+
+            // Center glow
+            const glowGradient = ctx.createRadialGradient(
+                centerX, centerY, 0,
+                centerX, centerY, 100
+            );
+            glowGradient.addColorStop(0, 'rgba(255, 100, 200, 0.2)');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Rotating outer ring
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(time * 0.005);
+            ctx.strokeStyle = 'rgba(255, 150, 200, 0.2)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.min(centerX, centerY) - 50, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

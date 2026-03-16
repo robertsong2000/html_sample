@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fractal Art - 分形艺术</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(150, 100, 255, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="fractal"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 改变分形参数</span>
+        <span>👆 点击 - 生成新分形图案</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('fractal');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let targetMouseX = mouseX;
+        let targetMouseY = mouseY;
+
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            targetMouseX = e.touches[0].clientX;
+            targetMouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Fractal particles
+        let fractalParticles = [];
+
+        canvas.addEventListener('click', (e) => {
+            generateFractalBurst(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            generateFractalBurst(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function generateFractalBurst(x, y) {
+            // Create a tree fractal burst
+            createBranch(x, y, -Math.PI / 2, 80, 8, 0);
+        }
+
+        function createBranch(x, y, angle, length, depth, hue) {
+            if (depth === 0 || length < 2) return;
+
+            const endX = x + Math.cos(angle) * length;
+            const endY = y + Math.sin(angle) * length;
+
+            fractalParticles.push({
+                x: x,
+                y: y,
+                endX: endX,
+                endY: endY,
+                progress: 0,
+                speed: 0.05 + Math.random() * 0.03,
+                hue: hue,
+                alpha: 1,
+                depth: depth,
+                lineWidth: depth * 0.8
+            });
+
+            // Schedule child branches
+            setTimeout(() => {
+                const branchAngle = Math.PI / 5 + (mouseX / canvas.width) * 0.3;
+                const lengthRatio = 0.65 + (mouseY / canvas.height) * 0.15;
+                
+                createBranch(endX, endY, angle - branchAngle, length * lengthRatio, depth - 1, (hue + 30) % 360);
+                createBranch(endX, endY, angle + branchAngle, length * lengthRatio, depth - 1, (hue + 60) % 360);
+                
+                if (depth > 5 && Math.random() > 0.5) {
+                    createBranch(endX, endY, angle, length * lengthRatio * 0.8, depth - 2, (hue + 90) % 360);
+                }
+            }, 100);
+        }
+
+        // Sierpinski triangle particles
+        let sierpinskiParticles = [];
+
+        function createSierpinski(centerX, centerY, size, depth) {
+            if (depth === 0) {
+                // Add particle at this point
+                sierpinskiParticles.push({
+                    x: centerX,
+                    y: centerY,
+                    size: size * 0.3,
+                    hue: (centerX + centerY) * 0.2 % 360,
+                    alpha: 1,
+                    decay: 0.005 + Math.random() * 0.01
+                });
+                return;
+            }
+
+            const h = size * Math.sqrt(3) / 2;
+            const halfSize = size / 2;
+
+            // Three corners of triangle
+            const p1 = { x: centerX, y: centerY - h * 2/3 };
+            const p2 = { x: centerX - halfSize, y: centerY + h / 3 };
+            const p3 = { x: centerX + halfSize, y: centerY + h / 3 };
+
+            // Recurse into three sub-triangles
+            createSierpinski((p1.x + p2.x) / 2, (p1.y + p2.y + p1.y) / 3, halfSize, depth - 1);
+            createSierpinski((p2.x + p3.x) / 2 - halfSize/2, (p2.y + p3.y) / 2, halfSize, depth - 1);
+            createSierpinski((p3.x + p1.x) / 2 + halfSize/2, (p3.y + p1.y) / 2, halfSize, depth - 1);
+        }
+
+        // Julia set inspired particles
+        class JuliaParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.originalX = x;
+                this.originalY = y;
+                this.vx = 0;
+                this.vy = 0;
+                this.hue = 200 + Math.random() * 60;
+                this.iterations = 0;
+                this.maxIterations = 50;
+                this.escapeRadius = 4;
+                // Julia set constant (changes with mouse)
+                this.cx = -0.7;
+                this.cy = 0.27015;
+            }
+
+            update(juliaC) {
+                this.cx = juliaC.x;
+                this.cy = juliaC.y;
+
+                let zx = (this.x - canvas.width / 2) / (canvas.width / 4);
+                let zy = (this.y - canvas.height / 2) / (canvas.height / 4);
+
+                this.iterations = 0;
+                while (zx * zx + zy * zy < this.escapeRadius && this.iterations < this.maxIterations) {
+                    const tmp = zx * zx - zy * zy + this.cx;
+                    zy = 2 * zx * zy + this.cy;
+                    zx = tmp;
+                    this.iterations++;
+                }
+
+                // Move based on iterations
+                const angle = (this.iterations / this.maxIterations) * Math.PI * 4;
+                const dist = this.iterations * 0.5;
+                this.vx = Math.cos(angle) * dist * 0.1;
+                this.vy = Math.sin(angle) * dist * 0.1;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Slowly return to original position
+                this.x += (this.originalX - this.x) * 0.01;
+                this.y += (this.originalY - this.y) * 0.01;
+            }
+
+            draw() {
+                const brightness = 50 + (this.iterations / this.maxIterations) * 50;
+                const alpha = 0.3 + (this.iterations / this.maxIterations) * 0.7;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue + this.iterations * 2}, 80%, ${brightness}%, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // Initialize Julia particles
+        const juliaParticles = [];
+        function initJuliaParticles() {
+            const spacing = 20;
+            for (let x = 0; x < canvas.width; x += spacing) {
+                for (let y = 0; y < canvas.height; y += spacing) {
+                    juliaParticles.push(new JuliaParticle(x, y));
+                }
+            }
+        }
+        initJuliaParticles();
+
+        // Mandelbrot zoom effect
+        let mandelbrotTime = 0;
+
+        function drawMandelbrotBackground() {
+            const imageData = ctx.createImageData(canvas.width, canvas.height);
+            const data = imageData.data;
+
+            const zoom = 1 + Math.sin(mandelbrotTime * 0.01) * 0.3;
+            const centerX = -0.5 + Math.sin(mandelbrotTime * 0.005) * 0.2;
+            const centerY = Math.cos(mandelbrotTime * 0.007) * 0.2;
+
+            const sampleStep = 4; // Sample every 4th pixel for performance
+
+            for (let px = 0; px < canvas.width; px += sampleStep) {
+                for (let py = 0; py < canvas.height; py += sampleStep) {
+                    const x0 = (px - canvas.width / 2) / (canvas.width / 4) / zoom + centerX;
+                    const y0 = (py - canvas.height / 2) / (canvas.height / 4) / zoom + centerY;
+
+                    let x = 0, y = 0;
+                    let iteration = 0;
+                    const maxIter = 50;
+
+                    while (x * x + y * y <= 4 && iteration < maxIter) {
+                        const xtemp = x * x - y * y + x0;
+                        y = 2 * x * y + y0;
+                        x = xtemp;
+                        iteration++;
+                    }
+
+                    if (iteration < maxIter) {
+                        const hue = (iteration / maxIter) * 360 + mandelbrotTime;
+                        const rgb = hslToRgb(hue / 360, 0.7, 0.5);
+                        
+                        // Fill block
+                        for (let dx = 0; dx < sampleStep && px + dx < canvas.width; dx++) {
+                            for (let dy = 0; dy < sampleStep && py + dy < canvas.height; dy++) {
+                                const idx = ((py + dy) * canvas.width + (px + dx)) * 4;
+                                data[idx] = rgb.r;
+                                data[idx + 1] = rgb.g;
+                                data[idx + 2] = rgb.b;
+                                data[idx + 3] = 100; // Semi-transparent
+                            }
+                        }
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function hslToRgb(h, s, l) {
+            let r, g, b;
+            if (s === 0) {
+                r = g = b = l;
+            } else {
+                const hue2rgb = (p, q, t) => {
+                    if (t < 0) t += 1;
+                    if (t > 1) t -= 1;
+                    if (t < 1/6) return p + (q - p) * 6 * t;
+                    if (t < 1/2) return q;
+                    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                    return p;
+                };
+                const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                const p = 2 * l - q;
+                r = hue2rgb(p, q, h + 1/3);
+                g = hue2rgb(p, q, h);
+                b = hue2rgb(p, q, h - 1/3);
+            }
+            return { r: Math.round(r * 255), g: Math.round(g * 255), b: Math.round(b * 255) };
+        }
+
+        // Animation loop
+        let time = 0;
+
+        function animate() {
+            time++;
+            mandelbrotTime++;
+
+            // Smooth mouse following
+            mouseX += (targetMouseX - mouseX) * 0.1;
+            mouseY += (targetMouseY - mouseY) * 0.1;
+
+            // Clear with fade effect
+            ctx.fillStyle = 'rgba(0, 0, 10, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Mandelbrot background (less frequently for performance)
+            if (time % 3 === 0) {
+                drawMandelbrotBackground();
+            }
+
+            // Update and draw Julia particles
+            const juliaC = {
+                x: (mouseX / canvas.width - 0.5) * 2,
+                y: (mouseY / canvas.height - 0.5) * 2
+            };
+
+            juliaParticles.forEach(p => {
+                p.update(juliaC);
+                p.draw();
+            });
+
+            // Update and draw fractal branch particles
+            fractalParticles = fractalParticles.filter(p => {
+                p.progress += p.speed;
+                p.alpha -= 0.002;
+
+                if (p.progress >= 1 || p.alpha <= 0) return false;
+
+                const currentX = p.x + (p.endX - p.x) * p.progress;
+                const currentY = p.y + (p.endY - p.y) * p.progress;
+
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(currentX, currentY);
+                ctx.strokeStyle = `hsla(${p.hue}, 80%, 60%, ${p.alpha})`;
+                ctx.lineWidth = p.lineWidth;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsla(${p.hue}, 80%, 60%, 0.5)`;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                return true;
+            });
+
+            // Update and draw Sierpinski particles
+            sierpinskiParticles = sierpinskiParticles.filter(p => {
+                p.alpha -= p.decay;
+                p.hue += 0.5;
+
+                if (p.alpha <= 0) return false;
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${p.hue}, 70%, 60%, ${p.alpha})`;
+                ctx.fill();
+
+                return true;
+            });
+
+            // Auto-generate occasional fractals
+            if (time % 180 === 0) {
+                const x = Math.random() * canvas.width;
+                const y = canvas.height * 0.8;
+                createBranch(x, y, -Math.PI / 2, 60, 7, Math.random() * 360);
+            }
+
+            if (time % 300 === 0) {
+                createSierpinski(canvas.width / 2, canvas.height / 2, 200, 5);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start with initial fractal
+        setTimeout(() => {
+            createBranch(canvas.width / 2, canvas.height * 0.8, -Math.PI / 2, 70, 8, 180);
+        }, 500);
+
+        animate();
+    </script>
+</body>
+</html>

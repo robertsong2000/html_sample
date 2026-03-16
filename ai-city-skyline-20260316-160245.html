@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City Skyline - 城市天际线</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(255, 200, 100, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="skyline"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 控制昼夜变化</span>
+        <span>👆 点击 - 触发烟花</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('skyline');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Fireworks
+        let fireworks = [];
+        let fireworkParticles = [];
+
+        canvas.addEventListener('click', (e) => {
+            launchFirework(e.clientX);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            launchFirework(e.touches[0].clientX);
+        });
+
+        function launchFirework(x) {
+            fireworks.push({
+                x: x,
+                y: canvas.height,
+                targetY: canvas.height * 0.2 + Math.random() * canvas.height * 0.3,
+                vy: -12 - Math.random() * 4,
+                hue: Math.random() * 360
+            });
+        }
+
+        // Building class
+        class Building {
+            constructor(x, width, maxHeight) {
+                this.x = x;
+                this.width = width;
+                this.height = 50 + Math.random() * maxHeight;
+                this.windows = [];
+                this.generateWindows();
+                this.antennaHeight = Math.random() > 0.5 ? 20 + Math.random() * 40 : 0;
+                this.antennaLight = Math.random() > 0.5;
+                this.antennaBlink = Math.random() * Math.PI * 2;
+            }
+
+            generateWindows() {
+                const windowWidth = 6;
+                const windowHeight = 10;
+                const gapX = 12;
+                const gapY = 16;
+                
+                const cols = Math.floor((this.width - 10) / gapX);
+                const rows = Math.floor((this.height - 20) / gapY);
+
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        this.windows.push({
+                            x: 5 + col * gapX,
+                            y: 10 + row * gapY,
+                            lit: Math.random() > 0.3,
+                            flicker: Math.random() * Math.PI * 2,
+                            flickerSpeed: 0.02 + Math.random() * 0.05,
+                            color: Math.random() > 0.7 ? 'warm' : 'cool'
+                        });
+                    }
+                }
+            }
+
+            draw(groundY, timeOfDay) {
+                const buildingY = groundY - this.height;
+
+                // Building body
+                const gradient = ctx.createLinearGradient(this.x, buildingY, this.x + this.width, buildingY);
+                const isDark = timeOfDay < 0.3 || timeOfDay > 0.7;
+                gradient.addColorStop(0, isDark ? '#1a1a2e' : '#4a5568');
+                gradient.addColorStop(1, isDark ? '#0f0f1a' : '#2d3748');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(this.x, buildingY, this.width, this.height);
+
+                // Windows
+                this.windows.forEach(win => {
+                    win.flicker += win.flickerSpeed;
+                    const flickerAlpha = 0.7 + Math.sin(win.flicker) * 0.3;
+                    
+                    let shouldShow = win.lit;
+                    if (isDark) {
+                        // Random window toggle at night
+                        if (Math.random() < 0.001) win.lit = !win.lit;
+                        shouldShow = win.lit;
+                    } else {
+                        // Daytime - windows reflect sky
+                        shouldShow = true;
+                    }
+
+                    if (shouldShow) {
+                        const wx = this.x + win.x;
+                        const wy = buildingY + win.y;
+                        
+                        if (isDark && win.lit) {
+                            // Glowing window at night
+                            ctx.save();
+                            ctx.shadowBlur = 8;
+                            ctx.shadowColor = win.color === 'warm' ? 
+                                `rgba(255, 200, 100, ${flickerAlpha * 0.5})` : 
+                                `rgba(200, 220, 255, ${flickerAlpha * 0.5})`;
+                            ctx.fillStyle = win.color === 'warm' ? 
+                                `rgba(255, 220, 150, ${flickerAlpha})` : 
+                                `rgba(200, 230, 255, ${flickerAlpha})`;
+                            ctx.fillRect(wx, wy, 6, 10);
+                            ctx.restore();
+                        } else {
+                            // Daytime window
+                            const skyReflect = timeOfDay < 0.5 ? 
+                                `rgba(135, 206, 235, ${0.3 + timeOfDay * 0.4})` :
+                                `rgba(255, 150, 100, ${0.3 + (1 - timeOfDay) * 0.4})`;
+                            ctx.fillStyle = skyReflect;
+                            ctx.fillRect(wx, wy, 6, 10);
+                        }
+                    }
+                });
+
+                // Antenna
+                if (this.antennaHeight > 0) {
+                    ctx.fillStyle = '#2a2a3e';
+                    ctx.fillRect(this.x + this.width / 2 - 2, buildingY - this.antennaHeight, 4, this.antennaHeight);
+                    
+                    if (this.antennaLight) {
+                        this.antennaBlink += 0.05;
+                        const blinkAlpha = Math.sin(this.antennaBlink) > 0 ? 1 : 0.3;
+                        ctx.save();
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = `rgba(255, 0, 0, ${blinkAlpha})`;
+                        ctx.fillStyle = `rgba(255, 50, 50, ${blinkAlpha})`;
+                        ctx.beginPath();
+                        ctx.arc(this.x + this.width / 2, buildingY - this.antennaHeight, 3, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+                    }
+                }
+            }
+        }
+
+        // Create buildings
+        const buildings = [];
+        function generateBuildings() {
+            buildings.length = 0;
+            let x = 0;
+            const layers = [
+                { maxHeight: 400, minZ: 0.6 },  // Back layer
+                { maxHeight: 300, minZ: 0.8 },  // Middle layer
+                { maxHeight: 250, minZ: 1 }     // Front layer
+            ];
+
+            // Generate 3 layers of buildings
+            layers.forEach((layer, layerIndex) => {
+                x = -50 + layerIndex * 30;
+                while (x < canvas.width + 100) {
+                    const width = 30 + Math.random() * 80;
+                    buildings.push({
+                        building: new Building(x, width, layer.maxHeight),
+                        layer: layerIndex,
+                        alpha: 0.5 + layerIndex * 0.2
+                    });
+                    x += width + Math.random() * 20;
+                }
+            });
+        }
+        generateBuildings();
+
+        // Stars
+        const stars = [];
+        for (let i = 0; i < 150; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height * 0.6,
+                size: Math.random() * 2,
+                twinkle: Math.random() * Math.PI * 2,
+                speed: 0.02 + Math.random() * 0.05
+            });
+        }
+
+        // Clouds
+        const clouds = [];
+        for (let i = 0; i < 5; i++) {
+            clouds.push({
+                x: Math.random() * canvas.width,
+                y: 50 + Math.random() * 150,
+                width: 100 + Math.random() * 200,
+                height: 30 + Math.random() * 40,
+                speed: 0.1 + Math.random() * 0.2
+            });
+        }
+
+        function drawSky(timeOfDay) {
+            // Sky gradient based on time of day
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            
+            if (timeOfDay < 0.25) {
+                // Night to dawn
+                const t = timeOfDay / 0.25;
+                gradient.addColorStop(0, lerpColor('#0a0a20', '#1a1a40', t));
+                gradient.addColorStop(0.5, lerpColor('#0f0f30', '#2d1b4e', t));
+                gradient.addColorStop(1, lerpColor('#1a1a2e', '#4a3060', t));
+            } else if (timeOfDay < 0.5) {
+                // Dawn to noon
+                const t = (timeOfDay - 0.25) / 0.25;
+                gradient.addColorStop(0, lerpColor('#1a1a40', '#4a90c2', t));
+                gradient.addColorStop(0.3, lerpColor('#2d1b4e', '#87ceeb', t));
+                gradient.addColorStop(1, lerpColor('#4a3060', '#f0e68c', t));
+            } else if (timeOfDay < 0.75) {
+                // Noon to sunset
+                const t = (timeOfDay - 0.5) / 0.25;
+                gradient.addColorStop(0, lerpColor('#4a90c2', '#ff6b6b', t));
+                gradient.addColorStop(0.3, lerpColor('#87ceeb', '#ffa500', t));
+                gradient.addColorStop(1, lerpColor('#f0e68c', '#ff4500', t));
+            } else {
+                // Sunset to night
+                const t = (timeOfDay - 0.75) / 0.25;
+                gradient.addColorStop(0, lerpColor('#ff6b6b', '#0a0a20', t));
+                gradient.addColorStop(0.5, lerpColor('#ffa500', '#0f0f30', t));
+                gradient.addColorStop(1, lerpColor('#ff4500', '#1a1a2e', t));
+            }
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function lerpColor(color1, color2, t) {
+            const c1 = hexToRgb(color1);
+            const c2 = hexToRgb(color2);
+            const r = Math.round(c1.r + (c2.r - c1.r) * t);
+            const g = Math.round(c1.g + (c2.g - c1.g) * t);
+            const b = Math.round(c1.b + (c2.b - c1.b) * t);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+
+        function drawStars(timeOfDay) {
+            const starAlpha = timeOfDay < 0.3 ? 1 : timeOfDay > 0.7 ? (1 - timeOfDay) / 0.3 : 0;
+            
+            if (starAlpha <= 0) return;
+
+            stars.forEach(star => {
+                star.twinkle += star.speed;
+                const alpha = (0.3 + Math.sin(star.twinkle) * 0.3) * starAlpha;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+                ctx.fill();
+            });
+        }
+
+        function drawMoon(timeOfDay) {
+            const moonAlpha = timeOfDay < 0.25 ? timeOfDay / 0.25 : timeOfDay > 0.75 ? 1 : 0;
+            
+            if (moonAlpha <= 0) return;
+
+            const moonX = canvas.width * 0.8;
+            const moonY = canvas.height * 0.15;
+            const moonRadius = 40;
+
+            ctx.save();
+            ctx.globalAlpha = moonAlpha;
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = 'rgba(255, 255, 200, 0.5)';
+            
+            // Moon glow
+            const glowGradient = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, moonRadius * 2);
+            glowGradient.addColorStop(0, 'rgba(255, 255, 200, 0.3)');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(moonX - moonRadius * 2, moonY - moonRadius * 2, moonRadius * 4, moonRadius * 4);
+
+            // Moon
+            ctx.beginPath();
+            ctx.arc(moonX, moonY, moonRadius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fffacd';
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawClouds(timeOfDay) {
+            const isDark = timeOfDay < 0.3 || timeOfDay > 0.7;
+            
+            clouds.forEach(cloud => {
+                cloud.x += cloud.speed;
+                if (cloud.x > canvas.width + cloud.width) {
+                    cloud.x = -cloud.width;
+                }
+
+                const gradient = ctx.createRadialGradient(
+                    cloud.x + cloud.width / 2, cloud.y, 0,
+                    cloud.x + cloud.width / 2, cloud.y, cloud.width / 2
+                );
+
+                if (isDark) {
+                    gradient.addColorStop(0, 'rgba(30, 30, 50, 0.5)');
+                    gradient.addColorStop(1, 'transparent');
+                } else if (timeOfDay < 0.5) {
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
+                    gradient.addColorStop(1, 'transparent');
+                } else {
+                    gradient.addColorStop(0, 'rgba(255, 150, 100, 0.6)');
+                    gradient.addColorStop(1, 'transparent');
+                }
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.ellipse(cloud.x + cloud.width / 2, cloud.y, cloud.width / 2, cloud.height / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        function updateFireworks() {
+            // Update rockets
+            fireworks = fireworks.filter(fw => {
+                fw.y += fw.vy;
+                fw.vy += 0.2;
+
+                if (fw.y <= fw.targetY) {
+                    // Explode
+                    for (let i = 0; i < 50; i++) {
+                        const angle = Math.random() * Math.PI * 2;
+                        const speed = 2 + Math.random() * 5;
+                        fireworkParticles.push({
+                            x: fw.x,
+                            y: fw.y,
+                            vx: Math.cos(angle) * speed,
+                            vy: Math.sin(angle) * speed,
+                            life: 1,
+                            hue: fw.hue + Math.random() * 30
+                        });
+                    }
+                    return false;
+                }
+
+                // Draw rocket
+                ctx.beginPath();
+                ctx.arc(fw.x, fw.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${fw.hue}, 100%, 70%)`;
+                ctx.fill();
+
+                return true;
+            });
+
+            // Update particles
+            fireworkParticles = fireworkParticles.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1;
+                p.life -= 0.02;
+
+                ctx.save();
+                ctx.globalAlpha = p.life;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${p.hue}, 100%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
+                ctx.fill();
+                ctx.restore();
+
+                return p.life > 0;
+            });
+        }
+
+        // Animation loop
+        let time = 0;
+
+        function animate() {
+            time++;
+
+            // Calculate time of day based on mouse Y (0 = top = noon, 1 = bottom = midnight)
+            const timeOfDay = mouseY / canvas.height;
+
+            // Draw sky
+            drawSky(timeOfDay);
+
+            // Draw stars
+            drawStars(timeOfDay);
+
+            // Draw moon
+            drawMoon(timeOfDay);
+
+            // Draw clouds
+            drawClouds(timeOfDay);
+
+            const groundY = canvas.height * 0.85;
+
+            // Draw buildings by layer
+            for (let layer = 0; layer <= 2; layer++) {
+                buildings.filter(b => b.layer === layer).forEach(b => {
+                    b.building.draw(groundY, timeOfDay);
+                });
+            }
+
+            // Ground
+            ctx.fillStyle = timeOfDay < 0.3 || timeOfDay > 0.7 ? '#0a0a15' : '#2d3748';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+            // Ground reflection (water-like at night)
+            if (timeOfDay < 0.3 || timeOfDay > 0.7) {
+                const reflectionGradient = ctx.createLinearGradient(0, groundY, 0, canvas.height);
+                reflectionGradient.addColorStop(0, 'rgba(100, 150, 200, 0.1)');
+                reflectionGradient.addColorStop(1, 'rgba(50, 100, 150, 0.05)');
+                ctx.fillStyle = reflectionGradient;
+                ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            }
+
+            // Update fireworks
+            updateFireworks();
+
+            // Auto-launch fireworks occasionally at night
+            if ((timeOfDay < 0.25 || timeOfDay > 0.75) && Math.random() < 0.01) {
+                launchFirework(Math.random() * canvas.width);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Particle Flow - 粒子流</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 255, 200, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="flow"></canvas>
+    <div class="info">
+        <span>🖱️ 移动鼠标 - 引导粒子流向</span>
+        <span>👆 点击 - 创建能量漩涡</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('flow');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let prevMouseX = mouseX;
+        let prevMouseY = mouseY;
+
+        canvas.addEventListener('mousemove', (e) => {
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            prevMouseX = mouseX;
+            prevMouseY = mouseY;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+        }, { passive: false });
+
+        // Vortex array
+        let vortices = [];
+
+        canvas.addEventListener('click', (e) => {
+            createVortex(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createVortex(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function createVortex(x, y) {
+            vortices.push({
+                x: x,
+                y: y,
+                strength: 100,
+                decay: 0.995,
+                rotation: 0
+            });
+        }
+
+        // Noise function for flow field
+        class SimplexNoise {
+            constructor() {
+                this.perm = [];
+                for (let i = 0; i < 512; i++) {
+                    this.perm[i] = Math.floor(Math.random() * 256);
+                }
+            }
+
+            noise2D(x, y) {
+                const X = Math.floor(x) & 255;
+                const Y = Math.floor(y) & 255;
+                x -= Math.floor(x);
+                y -= Math.floor(y);
+                const u = this.fade(x);
+                const v = this.fade(y);
+                const A = this.perm[X] + Y;
+                const B = this.perm[X + 1] + Y;
+                return this.lerp(v,
+                    this.lerp(u, this.grad(this.perm[A], x, y), this.grad(this.perm[B], x - 1, y)),
+                    this.lerp(u, this.grad(this.perm[A + 1], x, y - 1), this.grad(this.perm[B + 1], x - 1, y - 1))
+                );
+            }
+
+            fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+            lerp(t, a, b) { return a + t * (b - a); }
+            grad(hash, x, y) {
+                const h = hash & 3;
+                const u = h < 2 ? x : y;
+                const v = h < 2 ? y : x;
+                return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+            }
+        }
+
+        const noise = new SimplexNoise();
+
+        // Flow particle class
+        class FlowParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = 0;
+                this.vy = 0;
+                this.speed = 1 + Math.random() * 2;
+                this.size = 1 + Math.random() * 2;
+                this.life = 1;
+                this.maxLife = 200 + Math.random() * 300;
+                this.age = 0;
+                this.hue = 160 + Math.random() * 60;
+                this.trail = [];
+                this.maxTrail = 10 + Math.floor(Math.random() * 10);
+            }
+
+            update(time) {
+                // Store trail
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > this.maxTrail) {
+                    this.trail.shift();
+                }
+
+                // Flow field based on noise
+                const scale = 0.003;
+                const angle = noise.noise2D(this.x * scale, this.y * scale + time * 0.0005) * Math.PI * 4;
+                
+                let fx = Math.cos(angle) * this.speed;
+                let fy = Math.sin(angle) * this.speed;
+
+                // Mouse influence
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const mouseDist = Math.sqrt(dx * dx + dy * dy);
+                const mouseInfluence = 150;
+
+                if (mouseDist < mouseInfluence && mouseDist > 0) {
+                    const force = (mouseInfluence - mouseDist) / mouseInfluence;
+                    const mouseAngle = Math.atan2(dy, dx);
+                    fx += Math.cos(mouseAngle) * force * 3;
+                    fy += Math.sin(mouseAngle) * force * 3;
+                }
+
+                // Vortex influence
+                vortices.forEach(vortex => {
+                    const vdx = vortex.x - this.x;
+                    const vdy = vortex.y - this.y;
+                    const vDist = Math.sqrt(vdx * vdx + vdy * vdy);
+                    
+                    if (vDist < vortex.strength && vDist > 0) {
+                        const force = (vortex.strength - vDist) / vortex.strength;
+                        const vAngle = Math.atan2(vdy, vdx) + Math.PI / 2; // Perpendicular
+                        fx += Math.cos(vAngle) * force * 5;
+                        fy += Math.sin(vAngle) * force * 5;
+                    }
+                });
+
+                // Apply velocity with smoothing
+                this.vx += (fx - this.vx) * 0.1;
+                this.vy += (fy - this.vy) * 0.1;
+
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Age and life
+                this.age++;
+                this.life = 1 - (this.age / this.maxLife);
+
+                // Reset if dead or out of bounds
+                if (this.life <= 0 || 
+                    this.x < -50 || this.x > canvas.width + 50 ||
+                    this.y < -50 || this.y > canvas.height + 50) {
+                    this.reset();
+                }
+            }
+
+            draw() {
+                // Draw trail
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    
+                    ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.life * 0.3})`;
+                    ctx.lineWidth = this.size * 0.5;
+                    ctx.stroke();
+                }
+
+                // Draw particle
+                ctx.save();
+                ctx.globalAlpha = this.life;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `hsl(${this.hue}, 80%, 60%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${this.hue}, 80%, 70%)`;
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // Create particles
+        const particles = [];
+        const particleCount = 300;
+        for (let i = 0; i < particleCount; i++) {
+            particles.push(new FlowParticle());
+        }
+
+        // Background particle class (static)
+        class BackgroundParticle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = 0.5 + Math.random() * 1;
+                this.alpha = 0.1 + Math.random() * 0.3;
+                this.twinkle = Math.random() * Math.PI * 2;
+                this.twinkleSpeed = 0.02 + Math.random() * 0.03;
+            }
+
+            update() {
+                this.twinkle += this.twinkleSpeed;
+            }
+
+            draw() {
+                const alpha = this.alpha * (0.5 + Math.sin(this.twinkle) * 0.5);
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(150, 200, 255, ${alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // Create background particles
+        const bgParticles = [];
+        for (let i = 0; i < 100; i++) {
+            bgParticles.push(new BackgroundParticle());
+        }
+
+        // Draw mouse trail
+        let mouseTrail = [];
+
+        function updateMouseTrail() {
+            mouseTrail.push({ x: mouseX, y: mouseY });
+            if (mouseTrail.length > 30) {
+                mouseTrail.shift();
+            }
+
+            if (mouseTrail.length > 1) {
+                ctx.beginPath();
+                ctx.moveTo(mouseTrail[0].x, mouseTrail[0].y);
+                
+                for (let i = 1; i < mouseTrail.length; i++) {
+                    const alpha = i / mouseTrail.length;
+                    ctx.lineTo(mouseTrail[i].x, mouseTrail[i].y);
+                }
+                
+                const gradient = ctx.createLinearGradient(
+                    mouseTrail[0].x, mouseTrail[0].y,
+                    mouseX, mouseY
+                );
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(1, 'rgba(100, 255, 200, 0.5)');
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+
+        // Update vortices
+        function updateVortices() {
+            vortices = vortices.filter(v => {
+                v.strength *= v.decay;
+                v.rotation += 0.1;
+
+                // Draw vortex
+                ctx.save();
+                ctx.translate(v.x, v.y);
+                ctx.rotate(v.rotation);
+                
+                const alpha = v.strength / 100;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, v.strength * (0.3 + i * 0.3), 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(100, 255, 200, ${alpha * (1 - i * 0.3)})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                
+                ctx.restore();
+
+                return v.strength > 5;
+            });
+        }
+
+        // Animation loop
+        let time = 0;
+
+        function animate() {
+            time++;
+
+            // Clear with fade
+            ctx.fillStyle = 'rgba(5, 10, 20, 0.15)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw background particles
+            bgParticles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+
+            // Update mouse trail
+            updateMouseTrail();
+
+            // Update vortices
+            updateVortices();
+
+            // Update and draw flow particles
+            particles.forEach(particle => {
+                particle.update(time);
+                particle.draw();
+            });
+
+            // Mouse glow
+            const glowGradient = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 100);
+            glowGradient.addColorStop(0, 'rgba(100, 255, 200, 0.1)');
+            glowGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(mouseX - 100, mouseY - 100, 200, 200);
+
+            // Stats
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.font = '12px monospace';
+            ctx.fillText(`Particles: ${particleCount}`, 10, canvas.height - 10);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Initial clear
+        ctx.fillStyle = '#050a14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        animate();
+    </script>
+</body>
+</html>

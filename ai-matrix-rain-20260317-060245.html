@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矩阵雨 - Matrix Digital Rain</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(0, 255, 65, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            max-width: 300px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .info h3 {
+            margin-bottom: 10px;
+            font-size: 16px;
+            color: #00ff41;
+            text-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
+        }
+        
+        .info p {
+            margin: 5px 0;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        .info .key {
+            color: #00ff41;
+            font-weight: bold;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 65, 0.7);
+            font-size: 12px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 255, 65, 0.3);
+            font-family: 'Courier New', monospace;
+        }
+        
+        .glitch-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.1) 0px,
+                rgba(0, 0, 0, 0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+        }
+    </style>
+</head>
+<body>
+    <canvas id="matrix"></canvas>
+    <div class="glitch-overlay"></div>
+    
+    <div class="info">
+        <h3>💊 矩阵雨</h3>
+        <p><span class="key">鼠标移动</span> - 追踪光标产生涟漪</p>
+        <p><span class="key">点击</span> - 产生字符爆炸效果</p>
+        <p><span class="key">滚轮</span> - 调整下落速度</p>
+        <p><span class="key">空格</span> - 切换颜色模式</p>
+    </div>
+    
+    <div class="stats" id="stats">
+        FPS: 60 | 列: 0 | 速度: 1.0x
+    </div>
+
+    <script>
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+        
+        let width, height;
+        let columns = [];
+        let fontSize = 16;
+        let columnCount = 0;
+        let speed = 1;
+        let colorMode = 0;
+        
+        const colorModes = [
+            { main: '#00ff41', glow: 'rgba(0, 255, 65, 0.8)', name: '经典绿' },
+            { main: '#00ffff', glow: 'rgba(0, 255, 255, 0.8)', name: '赛博青' },
+            { main: '#ff00ff', glow: 'rgba(255, 0, 255, 0.8)', name: '霓虹紫' },
+            { main: '#ffff00', glow: 'rgba(255, 255, 0, 0.8)', name: '金色' },
+            { main: '#ff4444', glow: 'rgba(255, 68, 68, 0.8)', name: '警报红' }
+        ];
+        
+        // 字符集
+        const chars = {
+            matrix: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789',
+            binary: '01',
+            hex: '0123456789ABCDEF',
+            symbols: '!@#$%^&*(){}[]|;:,.<>?/~`'
+        };
+        
+        let currentCharset = chars.matrix;
+        
+        // 鼠标交互
+        let mouseX = 0, mouseY = 0;
+        let ripples = [];
+        let explosions = [];
+        
+        // 性能统计
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        
+        // 涟漪类
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 150;
+                this.alpha = 1;
+                this.speed = 5;
+            }
+            
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                return this.alpha > 0;
+            }
+            
+            draw(ctx) {
+                const color = colorModes[colorMode];
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 255, 65, ${this.alpha * 0.5})`;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+        
+        // 爆炸粒子类
+        class ExplosionParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.char = currentCharset[Math.floor(Math.random() * currentCharset.length)];
+                this.vx = (Math.random() - 0.5) * 10;
+                this.vy = (Math.random() - 0.5) * 10;
+                this.alpha = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.2;
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+                this.vy += 0.1;
+                this.alpha -= this.decay;
+                this.rotation += this.rotationSpeed;
+                return this.alpha > 0;
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.fillStyle = `rgba(0, 255, 65, ${this.alpha})`;
+                ctx.font = `${fontSize}px Courier New`;
+                ctx.textAlign = 'center';
+                ctx.fillText(this.char, 0, 0);
+                ctx.restore();
+            }
+        }
+        
+        // 列类
+        class Column {
+            constructor(x) {
+                this.x = x;
+                this.y = Math.random() * height;
+                this.speed = 0.5 + Math.random() * 0.5;
+                this.chars = [];
+                this.length = 5 + Math.floor(Math.random() * 20);
+                this.glitchTimer = 0;
+                this.glitchChar = null;
+                
+                for (let i = 0; i < this.length; i++) {
+                    this.chars.push({
+                        char: currentCharset[Math.floor(Math.random() * currentCharset.length)],
+                        alpha: 1 - (i / this.length)
+                    });
+                }
+            }
+            
+            update(mouseInfluence) {
+                this.y += this.speed * speed * 2;
+                
+                // 鼠标影响 - 靠近鼠标的列加速
+                const distX = Math.abs(this.x - mouseInfluence.x);
+                if (distX < 100) {
+                    this.y += (1 - distX / 100) * 3 * speed;
+                }
+                
+                // 随机更换字符
+                if (Math.random() < 0.05) {
+                    const idx = Math.floor(Math.random() * this.chars.length);
+                    this.chars[idx].char = currentCharset[Math.floor(Math.random() * currentCharset.length)];
+                }
+                
+                // 重置
+                if (this.y - this.length * fontSize > height) {
+                    this.y = -this.length * fontSize;
+                    this.speed = 0.5 + Math.random() * 0.5;
+                    this.length = 5 + Math.floor(Math.random() * 20);
+                }
+                
+                // 故障效果
+                this.glitchTimer--;
+                if (this.glitchTimer <= 0 && Math.random() < 0.01) {
+                    this.glitchTimer = 10;
+                    this.glitchChar = currentCharset[Math.floor(Math.random() * currentCharset.length)];
+                }
+            }
+            
+            draw(ctx) {
+                const color = colorModes[colorMode];
+                
+                for (let i = 0; i < this.chars.length; i++) {
+                    const charObj = this.chars[i];
+                    const y = this.y - i * fontSize;
+                    
+                    if (y < -fontSize || y > height + fontSize) continue;
+                    
+                    // 头部字符更亮
+                    if (i === 0) {
+                        ctx.fillStyle = '#fff';
+                        ctx.shadowBlur = 20;
+                        ctx.shadowColor = color.glow;
+                    } else {
+                        const alpha = charObj.alpha * 0.8;
+                        ctx.fillStyle = `rgba(0, 255, 65, ${alpha})`;
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = color.glow;
+                    }
+                    
+                    // 故障字符
+                    const char = (i === 0 && this.glitchTimer > 0) ? this.glitchChar : charObj.char;
+                    
+                    ctx.font = `${fontSize}px Courier New`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(char, this.x, y);
+                }
+                
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        function init() {
+            resize();
+            columns = [];
+            
+            for (let i = 0; i < columnCount; i++) {
+                columns.push(new Column(i * fontSize + fontSize / 2));
+            }
+        }
+        
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            
+            ctx.scale(dpr, dpr);
+            
+            columnCount = Math.ceil(width / fontSize);
+        }
+        
+        function triggerExplosion(x, y) {
+            const count = 30;
+            for (let i = 0; i < count; i++) {
+                explosions.push(new ExplosionParticle(x, y));
+            }
+            
+            // 添加涟漪
+            ripples.push(new Ripple(x, y));
+        }
+        
+        function animate(currentTime) {
+            // FPS
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            // 清除（带残影）
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+            
+            const mouseInfluence = { x: mouseX, y: mouseY };
+            
+            // 更新和绘制列
+            columns.forEach(col => {
+                col.update(mouseInfluence);
+                col.draw(ctx);
+            });
+            
+            // 更新和绘制涟漪
+            ripples = ripples.filter(r => {
+                const alive = r.update();
+                if (alive) r.draw(ctx);
+                return alive;
+            });
+            
+            // 更新和绘制爆炸粒子
+            explosions = explosions.filter(p => {
+                const alive = p.update();
+                if (alive) p.draw(ctx);
+                return alive;
+            });
+            
+            // 绘制鼠标光标效果
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 5, 0, Math.PI * 2);
+            ctx.fillStyle = colorModes[colorMode].glow;
+            ctx.fill();
+            
+            // 更新统计
+            const speedDisplay = speed.toFixed(1);
+            statsEl.textContent = `FPS: ${fps} | 列: ${columnCount} | 速度: ${speedDisplay}x`;
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            // 移动时产生小涟漪
+            if (Math.random() < 0.1) {
+                ripples.push(new Ripple(mouseX, mouseY));
+            }
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            triggerExplosion(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            speed = Math.max(0.2, Math.min(3, speed - e.deltaY * 0.001));
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                colorMode = (colorMode + 1) % colorModes.length;
+            }
+        });
+        
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+            triggerExplosion(mouseX, mouseY);
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            mouseX = touch.clientX;
+            mouseY = touch.clientY;
+        });
+        
+        // 启动
+        init();
+        animate(performance.now());
+    </script>
+</body>
+</html>

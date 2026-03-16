@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Ripples - 水波纹</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 10px rgba(100, 200, 255, 0.8);
+            pointer-events: none;
+        }
+
+        .info span {
+            display: block;
+            margin: 5px 0;
+        }
+
+        @media (max-width: 768px) {
+            .info {
+                font-size: 12px;
+                bottom: 10px;
+                left: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="water"></canvas>
+    <div class="info">
+        <span>👆 点击 - 创建水波纹</span>
+        <span>🖱️ 移动 - 产生涟漪轨迹</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('water');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        // Mouse tracking
+        let mouseX = canvas.width / 2;
+        let mouseY = canvas.height / 2;
+        let lastMouseX = mouseX;
+        let lastMouseY = mouseY;
+        let mouseSpeed = 0;
+
+        canvas.addEventListener('mousemove', (e) => {
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            
+            const dx = mouseX - lastMouseX;
+            const dy = mouseY - lastMouseY;
+            mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+            
+            // Create ripples from mouse movement
+            if (mouseSpeed > 5) {
+                ripples.push(new Ripple(mouseX, mouseY, mouseSpeed * 0.5));
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            lastMouseX = mouseX;
+            lastMouseY = mouseY;
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            
+            const dx = mouseX - lastMouseX;
+            const dy = mouseY - lastMouseY;
+            mouseSpeed = Math.sqrt(dx * dx + dy * dy);
+            
+            if (mouseSpeed > 5) {
+                ripples.push(new Ripple(mouseX, mouseY, mouseSpeed * 0.5));
+            }
+        }, { passive: false });
+
+        // Click to create ripple
+        canvas.addEventListener('click', (e) => {
+            createRippleSet(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            createRippleSet(e.touches[0].clientX, e.touches[0].clientY);
+        });
+
+        function createRippleSet(x, y) {
+            // Create multiple concentric ripples
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    ripples.push(new Ripple(x, y, 30 + i * 20));
+                }, i * 100);
+            }
+        }
+
+        // Ripple class
+        class Ripple {
+            constructor(x, y, maxRadius) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = maxRadius || 100;
+                this.speed = 2 + Math.random() * 2;
+                this.lineWidth = 3;
+                this.alpha = 1;
+                this.hue = 190 + Math.random() * 40;
+            }
+
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                this.lineWidth = 3 * this.alpha;
+            }
+
+            draw() {
+                if (this.alpha <= 0) return;
+
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                
+                // Outer glow
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, 0.5)`;
+                ctx.lineWidth = this.lineWidth + 4;
+                ctx.stroke();
+
+                // Main ripple
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${this.hue}, 70%, 70%, 1)`;
+                ctx.lineWidth = this.lineWidth;
+                ctx.stroke();
+
+                // Inner highlight
+                if (this.radius > 10) {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius - 5, 0, Math.PI * 2);
+                    ctx.strokeStyle = `hsla(${this.hue}, 60%, 80%, ${this.alpha * 0.5})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                }
+
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.radius >= this.maxRadius;
+            }
+        }
+
+        // Ripple array
+        let ripples = [];
+
+        // Background water caustics effect
+        class CausticLight {
+            constructor() {
+                this.points = [];
+                this.pointCount = 15;
+                
+                for (let i = 0; i < this.pointCount; i++) {
+                    this.points.push({
+                        x: Math.random() * canvas.width,
+                        y: Math.random() * canvas.height,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: (Math.random() - 0.5) * 0.5,
+                        radius: 100 + Math.random() * 200,
+                        hue: 190 + Math.random() * 30,
+                        phase: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+
+            update() {
+                this.points.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.phase += 0.02;
+
+                    // Bounce off edges
+                    if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                    if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+                    // Keep in bounds
+                    p.x = Math.max(0, Math.min(canvas.width, p.x));
+                    p.y = Math.max(0, Math.min(canvas.height, p.y));
+                });
+            }
+
+            draw() {
+                this.points.forEach(p => {
+                    const pulseRadius = p.radius + Math.sin(p.phase) * 30;
+                    
+                    const gradient = ctx.createRadialGradient(
+                        p.x, p.y, 0,
+                        p.x, p.y, pulseRadius
+                    );
+                    gradient.addColorStop(0, `hsla(${p.hue}, 70%, 50%, 0.15)`);
+                    gradient.addColorStop(0.5, `hsla(${p.hue}, 60%, 40%, 0.08)`);
+                    gradient.addColorStop(1, 'transparent');
+
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(p.x - pulseRadius, p.y - pulseRadius, pulseRadius * 2, pulseRadius * 2);
+                });
+            }
+        }
+
+        const caustics = new CausticLight();
+
+        // Floating particles (dust/pollen on water)
+        class FloatingParticle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = 1 + Math.random() * 2;
+                this.alpha = 0.3 + Math.random() * 0.4;
+                this.vx = (Math.random() - 0.5) * 0.3;
+                this.vy = (Math.random() - 0.5) * 0.3;
+                this.wobble = Math.random() * Math.PI * 2;
+                this.wobbleSpeed = 0.02 + Math.random() * 0.03;
+            }
+
+            update() {
+                this.wobble += this.wobbleSpeed;
+                this.x += this.vx + Math.sin(this.wobble) * 0.2;
+                this.y += this.vy + Math.cos(this.wobble) * 0.2;
+
+                // Reset if out of bounds
+                if (this.x < -10 || this.x > canvas.width + 10 ||
+                    this.y < -10 || this.y > canvas.height + 10) {
+                    this.reset();
+                }
+
+                // React to ripples
+                ripples.forEach(ripple => {
+                    const dx = this.x - ripple.x;
+                    const dy = this.y - ripple.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (Math.abs(dist - ripple.radius) < 20) {
+                        const angle = Math.atan2(dy, dx);
+                        this.vx += Math.cos(angle) * 0.5;
+                        this.vy += Math.sin(angle) * 0.5;
+                    }
+                });
+
+                // Dampen velocity
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(200, 230, 255, ${this.alpha})`;
+                ctx.fill();
+            }
+        }
+
+        // Create floating particles
+        const floatingParticles = [];
+        for (let i = 0; i < 50; i++) {
+            floatingParticles.push(new FloatingParticle());
+        }
+
+        // Water distortion effect
+        let distortionTime = 0;
+
+        function drawWaterSurface() {
+            distortionTime += 0.02;
+            
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            const copy = new Uint8ClampedArray(data);
+
+            const amplitude = 2;
+            const frequency = 0.02;
+
+            for (let y = 0; y < canvas.height; y++) {
+                for (let x = 0; x < canvas.width; x++) {
+                    const srcX = x + Math.sin(y * frequency + distortionTime) * amplitude;
+                    const srcY = y + Math.cos(x * frequency + distortionTime) * amplitude;
+
+                    const srcIdx = (
+                        Math.floor(srcY) * canvas.width + Math.floor(srcX)
+                    ) * 4;
+
+                    const dstIdx = (y * canvas.width + x) * 4;
+
+                    if (srcX >= 0 && srcX < canvas.width && srcY >= 0 && srcY < canvas.height) {
+                        data[dstIdx] = copy[srcIdx];
+                        data[dstIdx + 1] = copy[srcIdx + 1];
+                        data[dstIdx + 2] = copy[srcIdx + 2];
+                    }
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Animation loop
+        function animate() {
+            // Draw gradient background
+            const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            gradient.addColorStop(0, '#0a1628');
+            gradient.addColorStop(0.5, '#0d2847');
+            gradient.addColorStop(1, '#051525');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw caustic light effects
+            caustics.update();
+            caustics.draw();
+
+            // Update and draw ripples
+            ripples = ripples.filter(ripple => {
+                ripple.update();
+                ripple.draw();
+                return !ripple.isDead();
+            });
+
+            // Update and draw floating particles
+            floatingParticles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+
+            // Subtle water distortion (apply every other frame for performance)
+            // Commented out for better performance - uncomment for distortion effect
+            // drawWaterSurface();
+
+            // Add subtle reflection shimmer
+            const shimmerGradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+            shimmerGradient.addColorStop(0, 'transparent');
+            shimmerGradient.addColorStop(0.5, 'rgba(100, 180, 255, 0.02)');
+            shimmerGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = shimmerGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Auto-generate occasional ripples
+            if (Math.random() < 0.01) {
+                ripples.push(new Ripple(
+                    Math.random() * canvas.width,
+                    Math.random() * canvas.height,
+                    50 + Math.random() * 80
+                ));
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Start with initial ripples
+        setTimeout(() => {
+            createRippleSet(canvas.width / 2, canvas.height / 2);
+        }, 500);
+
+        animate();
+    </script>
+</body>
+</html>

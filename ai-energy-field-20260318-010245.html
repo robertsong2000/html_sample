@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>能量场 - Energy Field</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #050510; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+        .info {
+            position: fixed; bottom: 20px; left: 20px; color: rgba(100,255,200,0.9);
+            font-size: 14px; z-index: 10; background: rgba(5,10,15,0.8);
+            padding: 15px 20px; border-radius: 10px;
+            border: 1px solid rgba(100,255,200,0.3); max-width: 280px;
+        }
+        .info h3 { margin-bottom: 10px; font-size: 16px; color: #66ffcc; text-shadow: 0 0 20px rgba(100,255,200,0.6); }
+        .info p { margin: 5px 0; font-size: 12px; line-height: 1.6; }
+        .info .key { color: #88ffdd; font-weight: bold; }
+        .stats {
+            position: fixed; top: 20px; right: 20px; color: rgba(255,255,255,0.7);
+            font-size: 12px; z-index: 10; background: rgba(5,10,15,0.8);
+            padding: 10px 15px; border-radius: 8px; font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="energy"></canvas>
+    <div class="info">
+        <h3>⚡ 能量场</h3>
+        <p><span class="key">移动鼠标</span> - 控制能量流向</p>
+        <p><span class="key">点击</span> - 释放能量脉冲</p>
+        <p><span class="key">滚轮</span> - 调整能量强度</p>
+        <p><span class="key">空格</span> - 切换能量模式</p>
+    </div>
+    <div class="stats" id="stats">FPS: 60 | 能量: 0</div>
+
+    <script>
+        const canvas = document.getElementById('energy');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let energyIntensity = 1;
+        let energyMode = 0;
+        let time = 0;
+        
+        const energyModes = [
+            { name: '流动', color: '#00ffaa', secondary: '#00aaff' },
+            { name: '脉冲', color: '#ff6688', secondary: '#ffaa00' },
+            { name: '漩涡', color: '#aa66ff', secondary: '#66aaff' },
+            { name: '辐射', color: '#ffcc00', secondary: '#ff6600' }
+        ];
+        
+        // 能量粒子类
+        class EnergyParticle {
+            constructor() { this.reset(); }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = (Math.random() - 0.5) * 2;
+                this.size = 2 + Math.random() * 3;
+                this.alpha = 0.3 + Math.random() * 0.7;
+                this.life = 1;
+                this.decay = 0.002 + Math.random() * 0.003;
+            }
+            
+            update(mouseInfluence) {
+                const mode = energyModes[energyMode];
+                
+                switch (energyMode) {
+                    case 0: // 流动
+                        this.flowMode(mouseInfluence);
+                        break;
+                    case 1: // 脉冲
+                        this.pulseMode();
+                        break;
+                    case 2: // 漩涡
+                        this.vortexMode();
+                        break;
+                    case 3: // 辐射
+                        this.radiateMode();
+                        break;
+                }
+                
+                this.life -= this.decay;
+                if (this.life <= 0) this.reset();
+            }
+            
+            flowMode(mouseInfluence) {
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 0 && dist < 300) {
+                    this.vx += (dx / dist) * 0.3 * energyIntensity;
+                    this.vy += (dy / dist) * 0.3 * energyIntensity;
+                }
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.98;
+                this.vy *= 0.98;
+            }
+            
+            pulseMode() {
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                
+                const pulse = Math.sin(time * 0.05) * 2;
+                this.x += Math.cos(angle) * pulse;
+                this.y += Math.sin(angle) * pulse;
+                
+                this.vx *= 0.95;
+                this.vy *= 0.95;
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+            
+            vortexMode() {
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                
+                const tangentAngle = angle + Math.PI / 2;
+                const force = (300 / (dist + 50)) * 0.5;
+                
+                this.vx += Math.cos(tangentAngle) * force;
+                this.vy += Math.sin(tangentAngle) * force;
+                this.vx -= dx * 0.0005;
+                this.vy -= dy * 0.0005;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+            }
+            
+            radiateMode() {
+                const centerX = width / 2;
+                const centerY = height / 2;
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                
+                const radialForce = 0.1 * energyIntensity;
+                this.vx += Math.cos(angle) * radialForce;
+                this.vy += Math.sin(angle) * radialForce;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+            }
+            
+            draw(ctx) {
+                const mode = energyModes[energyMode];
+                const alpha = this.alpha * this.life;
+                
+                // 发光效果
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 4);
+                gradient.addColorStop(0, mode.color);
+                gradient.addColorStop(0.5, mode.secondary);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 4, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = alpha * 0.5;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+                
+                // 核心
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.globalAlpha = alpha;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // 能量脉冲类
+        class EnergyPulse {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200;
+                this.speed = 8;
+                this.alpha = 1;
+            }
+            
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                return this.radius < this.maxRadius;
+            }
+            
+            draw(ctx) {
+                if (this.alpha <= 0) return;
+                
+                const mode = energyModes[energyMode];
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = mode.color;
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = this.alpha * 0.8;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+                
+                // 内圈
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * 0.7, 0, Math.PI * 2);
+                ctx.strokeStyle = mode.secondary;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = this.alpha * 0.5;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // 能量线类
+        class EnergyLine {
+            constructor(p1, p2) {
+                this.p1 = p1;
+                this.p2 = p2;
+            }
+            
+            draw(ctx) {
+                const dx = this.p2.x - this.p1.x;
+                const dy = this.p2.y - this.p1.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 100) return;
+                
+                const mode = energyModes[energyMode];
+                const alpha = (1 - dist / 100) * 0.3;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.p1.x, this.p1.y);
+                ctx.lineTo(this.p2.x, this.p2.y);
+                ctx.strokeStyle = mode.color;
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = alpha;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        let particles = [];
+        let pulses = [];
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        
+        function init() {
+            resize();
+            createParticles();
+        }
+        
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            ctx.scale(dpr, dpr);
+        }
+        
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < 150; i++) {
+                particles.push(new EnergyParticle());
+            }
+        }
+        
+        function createPulse(x, y) {
+            pulses.push(new EnergyPulse(x, y));
+        }
+        
+        function drawEnergyField() {
+            const mode = energyModes[energyMode];
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            // 中心能量源
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 100);
+            gradient.addColorStop(0, mode.color);
+            gradient.addColorStop(0.5, mode.secondary);
+            gradient.addColorStop(1, 'transparent');
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 50 + Math.sin(time * 0.05) * 20, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.globalAlpha = 0.3 * energyIntensity;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+        
+        function drawConnections() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const line = new EnergyLine(particles[i], particles[j]);
+                    line.draw(ctx);
+                }
+            }
+        }
+        
+        function animate(currentTime) {
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            time++;
+            
+            // 清除
+            ctx.fillStyle = 'rgba(5, 5, 16, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制能量场
+            drawEnergyField();
+            
+            // 绘制连接线
+            drawConnections();
+            
+            // 更新和绘制粒子
+            const mouseInfluence = { x: mouseX, y: mouseY };
+            particles.forEach(p => {
+                p.update(mouseInfluence);
+                p.draw(ctx);
+            });
+            
+            // 更新和绘制脉冲
+            pulses = pulses.filter(pulse => {
+                const alive = pulse.update();
+                if (alive) pulse.draw(ctx);
+                return alive;
+            });
+            
+            statsEl.textContent = `FPS: ${fps} | 能量: ${particles.length} | ${energyModes[energyMode].name}`;
+            requestAnimationFrame(animate);
+        }
+        
+        window.addEventListener('resize', resize);
+        canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        canvas.addEventListener('click', e => { createPulse(e.clientX, e.clientY); });
+        canvas.addEventListener('wheel', e => {
+            e.preventDefault();
+            energyIntensity = Math.max(0.3, Math.min(2.5, energyIntensity - e.deltaY * 0.001));
+        });
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space') { e.preventDefault(); energyMode = (energyMode + 1) % energyModes.length; }
+        });
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+            createPulse(t.clientX, t.clientY);
+        });
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+        });
+        
+        init();
+        animate(performance.now());
+    </script>
+</body>
+</html>

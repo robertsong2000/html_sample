@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极光幻境 - Aurora Borealis</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #000011 0%, #000033 50%, #000022 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        
+        .info-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 32px;
+            font-weight: 300;
+            letter-spacing: 8px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 0 0 20px rgba(100, 255, 218, 0.6);
+            animation: titleGlow 3s ease-in-out infinite alternate;
+        }
+        
+        @keyframes titleGlow {
+            from { text-shadow: 0 0 20px rgba(100, 255, 218, 0.4); }
+            to { text-shadow: 0 0 40px rgba(100, 255, 218, 0.8), 0 0 60px rgba(100, 255, 218, 0.4); }
+        }
+        
+        .star {
+            position: fixed;
+            background: white;
+            border-radius: 50%;
+            animation: twinkle 2s ease-in-out infinite;
+            z-index: 0;
+        }
+        
+        @keyframes twinkle {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+    </style>
+</head>
+<body>
+    <div class="title">极光幻境</div>
+    <div class="info-panel">
+        <div>🖱️ 移动鼠标 - 引导极光流动</div>
+        <div>🎨 点击屏幕 - 切换极光配色</div>
+        <div>✨ 滚动滚轮 - 调整极光强度</div>
+    </div>
+    <canvas id="aurora"></canvas>
+    
+    <script>
+        // 创建星星背景
+        function createStars() {
+            const numStars = Math.floor(window.innerWidth * window.innerHeight / 3000);
+            for (let i = 0; i < numStars; i++) {
+                const star = document.createElement('div');
+                star.className = 'star';
+                star.style.left = Math.random() * 100 + '%';
+                star.style.top = Math.random() * 60 + '%';
+                star.style.width = Math.random() * 2 + 1 + 'px';
+                star.style.height = star.style.width;
+                star.style.animationDelay = Math.random() * 2 + 's';
+                document.body.appendChild(star);
+            }
+        }
+        createStars();
+        
+        // 极光配置
+        const canvas = document.getElementById('aurora');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let targetMouseX = 0, targetMouseY = 0;
+        let intensity = 1;
+        let colorScheme = 0;
+        
+        const colorSchemes = [
+            { // 经典极光
+                colors: ['#00ff88', '#00ffcc', '#88ffff', '#00ccff', '#0088ff'],
+                bg: ['rgba(0, 255, 136, 0.03)', 'rgba(0, 204, 255, 0.02)']
+            },
+            { // 北极光
+                colors: ['#00ff99', '#00ffdd', '#aaffff', '#ff88ff', '#aa88ff'],
+                bg: ['rgba(0, 255, 153, 0.03)', 'rgba(170, 136, 255, 0.02)']
+            },
+            { // 火焰极光
+                colors: ['#ff4488', '#ff8844', '#ffcc44', '#ffff88', '#88ffcc'],
+                bg: ['rgba(255, 68, 136, 0.03)', 'rgba(255, 204, 68, 0.02)']
+            },
+            { // 深海极光
+                colors: ['#0044ff', '#0088ff', '#00ccff', '#00ffff', '#88ffff'],
+                bg: ['rgba(0, 68, 255, 0.03)', 'rgba(0, 255, 255, 0.02)']
+            },
+            { // 梦幻极光
+                colors: ['#ff00ff', '#cc44ff', '#8888ff', '#44ccff', '#00ffff'],
+                bg: ['rgba(255, 0, 255, 0.03)', 'rgba(68, 204, 255, 0.02)']
+            }
+        ];
+        
+        // 极光粒子系统
+        class AuroraWave {
+            constructor(index) {
+                this.index = index;
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = height * 0.3 + Math.random() * height * 0.4;
+                this.baseY = this.y;
+                this.amplitude = 30 + Math.random() * 50;
+                this.frequency = 0.002 + Math.random() * 0.003;
+                this.speed = 0.5 + Math.random() * 1.5;
+                this.phase = Math.random() * Math.PI * 2;
+                this.thickness = 100 + Math.random() * 150;
+                this.colorIndex = Math.floor(Math.random() * 5);
+                this.alpha = 0.1 + Math.random() * 0.2;
+                this.waveSpeed = 0.01 + Math.random() * 0.02;
+            }
+            
+            update(time) {
+                this.phase += this.waveSpeed;
+                
+                // 鼠标影响
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const influence = Math.max(0, 1 - dist / 400);
+                
+                this.y = this.baseY + Math.sin(time * this.speed * 0.001 + this.phase) * this.amplitude;
+                this.y += dy * influence * 0.1;
+                
+                // 水平移动
+                this.x += this.speed * 0.5;
+                if (this.x > width + 100) {
+                    this.x = -100;
+                }
+            }
+            
+            draw() {
+                const scheme = colorSchemes[colorScheme];
+                const gradient = ctx.createLinearGradient(
+                    this.x - this.thickness,
+                    this.y,
+                    this.x + this.thickness,
+                    this.y
+                );
+                
+                const color = scheme.colors[this.colorIndex];
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(0.3, this.hexToRgba(color, this.alpha * intensity * 0.5));
+                gradient.addColorStop(0.5, this.hexToRgba(color, this.alpha * intensity));
+                gradient.addColorStop(0.7, this.hexToRgba(color, this.alpha * intensity * 0.5));
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x - this.thickness, 0);
+                
+                // 绘制波浪形状
+                for (let i = 0; i <= 20; i++) {
+                    const t = i / 20;
+                    const px = this.x - this.thickness + this.thickness * 2 * t;
+                    const py = this.y + Math.sin(t * Math.PI * 3 + this.phase) * 30;
+                    ctx.lineTo(px, py);
+                }
+                
+                ctx.lineTo(this.x + this.thickness, height);
+                ctx.lineTo(this.x - this.thickness, height);
+                ctx.closePath();
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+            
+            hexToRgba(hex, alpha) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+        }
+        
+        // 光柱效果
+        class LightBeam {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.width = 2 + Math.random() * 4;
+                this.alpha = 0;
+                this.targetAlpha = 0.05 + Math.random() * 0.1;
+                this.speed = 0.005 + Math.random() * 0.01;
+                this.life = 0;
+                this.maxLife = 100 + Math.random() * 200;
+            }
+            
+            update() {
+                this.life++;
+                
+                if (this.life < this.maxLife * 0.3) {
+                    this.alpha += (this.targetAlpha - this.alpha) * 0.05;
+                } else if (this.life > this.maxLife * 0.7) {
+                    this.alpha *= 0.98;
+                }
+                
+                if (this.life > this.maxLife) {
+                    this.reset();
+                }
+                
+                // 鼠标影响
+                const dx = mouseX - this.x;
+                this.x += dx * 0.001;
+            }
+            
+            draw() {
+                const gradient = ctx.createLinearGradient(this.x, 0, this.x, height);
+                const scheme = colorSchemes[colorScheme];
+                const color = scheme.colors[Math.floor(Math.random() * 5)];
+                
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(0.2, this.hexToRgba(color, this.alpha * intensity * 0.5));
+                gradient.addColorStop(0.5, this.hexToRgba(color, this.alpha * intensity));
+                gradient.addColorStop(0.8, this.hexToRgba(color, this.alpha * intensity * 0.5));
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(this.x - this.width / 2, 0, this.width, height);
+            }
+            
+            hexToRgba(hex, alpha) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+        }
+        
+        // 粒子效果
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height * 0.7;
+                this.size = 1 + Math.random() * 2;
+                this.speedX = (Math.random() - 0.5) * 0.5;
+                this.speedY = -0.2 - Math.random() * 0.5;
+                this.alpha = 0.3 + Math.random() * 0.5;
+                this.life = 0;
+                this.maxLife = 200 + Math.random() * 300;
+            }
+            
+            update() {
+                this.life++;
+                this.x += this.speedX;
+                this.y += this.speedY;
+                
+                // 鼠标吸引
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 150) {
+                    this.x += dx * 0.02;
+                    this.y += dy * 0.02;
+                }
+                
+                if (this.life > this.maxLife || this.y < 0) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                const scheme = colorSchemes[colorScheme];
+                const color = scheme.colors[Math.floor(this.y / height * 5) % 5];
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.hexToRgba(color, this.alpha * intensity);
+                ctx.fill();
+            }
+            
+            hexToRgba(hex, alpha) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+        }
+        
+        // 初始化
+        let waves = [];
+        let beams = [];
+        let particles = [];
+        
+        function init() {
+            resize();
+            
+            waves = [];
+            beams = [];
+            particles = [];
+            
+            for (let i = 0; i < 15; i++) {
+                waves.push(new AuroraWave(i));
+            }
+            
+            for (let i = 0; i < 8; i++) {
+                beams.push(new LightBeam());
+            }
+            
+            for (let i = 0; i < 50; i++) {
+                particles.push(new Particle());
+            }
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        // 动画循环
+        let lastTime = 0;
+        const fps = 60;
+        const interval = 1000 / fps;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            const delta = currentTime - lastTime;
+            if (delta < interval) return;
+            lastTime = currentTime - (delta % interval);
+            
+            // 清除画布（带拖尾效果）
+            ctx.fillStyle = 'rgba(0, 0, 17, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 平滑鼠标移动
+            mouseX += (targetMouseX - mouseX) * 0.05;
+            mouseY += (targetMouseY - mouseY) * 0.05;
+            
+            // 更新和绘制光柱
+            beams.forEach(beam => {
+                beam.update();
+                beam.draw();
+            });
+            
+            // 更新和绘制极光波
+            waves.forEach(wave => {
+                wave.update(currentTime);
+                wave.draw();
+            });
+            
+            // 更新和绘制粒子
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+        }
+        
+        // 事件监听
+        window.addEventListener('resize', () => {
+            resize();
+            init();
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            targetMouseX = e.touches[0].clientX;
+            targetMouseY = e.touches[0].clientY;
+        });
+        
+        canvas.addEventListener('click', () => {
+            colorScheme = (colorScheme + 1) % colorSchemes.length;
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            intensity = Math.max(0.2, Math.min(2, intensity - e.deltaY * 0.001));
+        });
+        
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

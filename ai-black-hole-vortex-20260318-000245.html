@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>黑洞漩涡 - Black Hole Vortex</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #000; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+        .info {
+            position: fixed; bottom: 20px; left: 20px; color: rgba(200,180,255,0.9);
+            font-size: 14px; z-index: 10; background: rgba(10,5,20,0.8);
+            padding: 15px 20px; border-radius: 10px;
+            border: 1px solid rgba(150,100,200,0.3); max-width: 280px;
+        }
+        .info h3 { margin-bottom: 10px; font-size: 16px; color: #cc99ff; text-shadow: 0 0 20px rgba(200,150,255,0.6); }
+        .info p { margin: 5px 0; font-size: 12px; line-height: 1.6; }
+        .info .key { color: #ff99cc; font-weight: bold; }
+        .stats {
+            position: fixed; top: 20px; right: 20px; color: rgba(255,255,255,0.7);
+            font-size: 12px; z-index: 10; background: rgba(10,5,20,0.8);
+            padding: 10px 15px; border-radius: 8px; font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="blackhole"></canvas>
+    <div class="info">
+        <h3>🕳️ 黑洞漩涡</h3>
+        <p><span class="key">移动鼠标</span> - 控制引力方向</p>
+        <p><span class="key">点击</span> - 释放能量波</p>
+        <p><span class="key">滚轮</span> - 调整引力强度</p>
+        <p><span class="key">空格</span> - 切换吸积盘颜色</p>
+    </div>
+    <div class="stats" id="stats">FPS: 60 | 粒子: 0</div>
+
+    <script>
+        const canvas = document.getElementById('blackhole');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+        
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let gravityStrength = 1;
+        let diskColorMode = 0;
+        let time = 0;
+        
+        const diskColors = [
+            { name: '经典', inner: '#ff6600', outer: '#ffcc00', glow: '#ff4400' },
+            { name: '蓝移', inner: '#0088ff', outer: '#00ffff', glow: '#0044ff' },
+            { name: '紫晶', inner: '#aa00ff', outer: '#ff66ff', glow: '#6600ff' },
+            { name: '绿能', inner: '#00ff66', outer: '#ccff00', glow: '#00aa44' }
+        ];
+        
+        // 物质粒子类
+        class Matter {
+            constructor() { this.reset(); }
+            
+            reset() {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 200 + Math.random() * 300;
+                this.x = centerX + Math.cos(angle) * dist;
+                this.y = centerY + Math.sin(angle) * dist;
+                this.vx = Math.cos(angle + Math.PI/2) * (2 + Math.random() * 2);
+                this.vy = Math.sin(angle + Math.PI/2) * (2 + Math.random() * 2);
+                this.size = 1 + Math.random() * 2;
+                this.alpha = 0.5 + Math.random() * 0.5;
+                this.color = `hsl(${30 + Math.random() * 30}, 100%, ${50 + Math.random() * 30}%)`;
+                this.trail = [];
+            }
+            
+            update() {
+                // 计算到黑洞中心的距离和角度
+                const dx = centerX - this.x;
+                const dy = centerY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                
+                // 引力加速度
+                const gravity = (gravityStrength * 500) / (dist * dist);
+                this.vx += Math.cos(angle) * gravity;
+                this.vy += Math.sin(angle) * gravity;
+                
+                // 鼠标影响
+                const mdx = mouseX - this.x;
+                const mdy = mouseY - this.y;
+                const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+                if (mdist < 150) {
+                    this.vx += (mdx / mdist) * 0.1;
+                    this.vy += (mdy / mdist) * 0.1;
+                }
+                
+                // 保存轨迹
+                this.trail.push({ x: this.x, y: this.y });
+                if (this.trail.length > 15) this.trail.shift();
+                
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 被黑洞吞噬
+                if (dist < 30) {
+                    this.reset();
+                    return;
+                }
+                
+                // 逃逸出界
+                if (dist > Math.max(width, height)) {
+                    this.reset();
+                }
+            }
+            
+            draw(ctx) {
+                // 绘制轨迹
+                if (this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = `rgba(255, 150, 50, ${this.alpha * 0.3})`;
+                    ctx.lineWidth = this.size * 0.5;
+                    ctx.stroke();
+                }
+                
+                // 绘制粒子
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+            }
+        }
+        
+        // 能量波类
+        class EnergyWave {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200;
+                this.speed = 5;
+                this.alpha = 1;
+            }
+            
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                return this.radius < this.maxRadius;
+            }
+            
+            draw(ctx) {
+                if (this.alpha <= 0) return;
+                
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(255, 100, 50, ${this.alpha * 0.5})`;
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            }
+        }
+        
+        let particles = [];
+        let energyWaves = [];
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        
+        function init() {
+            resize();
+            createParticles();
+        }
+        
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            ctx.scale(dpr, dpr);
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < 200; i++) {
+                particles.push(new Matter());
+            }
+        }
+        
+        function drawBlackHole() {
+            const colors = diskColors[diskColorMode];
+            
+            // 吸积盘外圈
+            for (let i = 5; i > 0; i--) {
+                const radius = 80 + i * 20;
+                const gradient = ctx.createRadialGradient(centerX, centerY, 30, centerX, centerY, radius);
+                gradient.addColorStop(0, 'transparent');
+                gradient.addColorStop(0.5, colors.glow.replace(')', `, ${0.1 / i})`).replace('rgb', 'rgba'));
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.ellipse(centerX, centerY, radius, radius * 0.3, time * 0.001, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+            
+            // 旋转吸积盘
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(time * 0.002);
+            
+            for (let i = 0; i < 3; i++) {
+                const angle = (i / 3) * Math.PI * 2;
+                const gradient = ctx.createLinearGradient(0, -50, 0, 50);
+                gradient.addColorStop(0, colors.inner);
+                gradient.addColorStop(0.5, colors.outer);
+                gradient.addColorStop(1, colors.inner);
+                
+                ctx.beginPath();
+                ctx.ellipse(Math.cos(angle) * 40, Math.sin(angle) * 15, 60, 20, angle, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = 0.3;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+            
+            ctx.restore();
+            
+            // 事件视界（黑洞核心）
+            const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, 30);
+            coreGradient.addColorStop(0, '#000');
+            coreGradient.addColorStop(0.7, '#000');
+            coreGradient.addColorStop(1, colors.glow);
+            
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 30, 0, Math.PI * 2);
+            ctx.fillStyle = coreGradient;
+            ctx.fill();
+            
+            // 光子球
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 35, 0, Math.PI * 2);
+            ctx.strokeStyle = colors.outer;
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.5 + Math.sin(time * 0.05) * 0.3;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+        
+        function createEnergyWave(x, y) {
+            energyWaves.push(new EnergyWave(x, y));
+        }
+        
+        function animate(currentTime) {
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            time++;
+            
+            // 清除
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制黑洞
+            drawBlackHole();
+            
+            // 更新和绘制粒子
+            particles.forEach(p => {
+                p.update();
+                p.draw(ctx);
+            });
+            
+            // 更新和绘制能量波
+            energyWaves = energyWaves.filter(w => {
+                const alive = w.update();
+                if (alive) w.draw(ctx);
+                return alive;
+            });
+            
+            statsEl.textContent = `FPS: ${fps} | 粒子: ${particles.length} | ${diskColors[diskColorMode].name}`;
+            requestAnimationFrame(animate);
+        }
+        
+        window.addEventListener('resize', () => { resize(); });
+        canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        canvas.addEventListener('click', e => { createEnergyWave(e.clientX, e.clientY); });
+        canvas.addEventListener('wheel', e => {
+            e.preventDefault();
+            gravityStrength = Math.max(0.3, Math.min(3, gravityStrength - e.deltaY * 0.001));
+        });
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space') { e.preventDefault(); diskColorMode = (diskColorMode + 1) % diskColors.length; }
+        });
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+            createEnergyWave(t.clientX, t.clientY);
+        });
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+        });
+        
+        init();
+        animate(performance.now());
+    </script>
+</body>
+</html>

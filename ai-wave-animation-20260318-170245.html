@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>波浪动画 - Wave Animation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: linear-gradient(to bottom, #1a3a52 0%, #0d1f2d 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(100, 200, 255, 0.9);
+            font-size: 48px;
+            font-weight: 300;
+            letter-spacing: 15px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 20px rgba(100, 200, 255, 0.8),
+                0 0 40px rgba(100, 200, 255, 0.4);
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateX(-50%) translateY(0); }
+            50% { transform: translateX(-50%) translateY(-10px); }
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: rgba(100, 200, 255, 0.15);
+            border: 1px solid rgba(100, 200, 255, 0.4);
+            color: rgba(150, 220, 255, 0.9);
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .btn:hover {
+            background: rgba(100, 200, 255, 0.25);
+            border-color: rgba(100, 200, 255, 0.6);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(100, 200, 255, 0.4);
+        }
+        
+        .btn.active {
+            background: rgba(100, 200, 255, 0.3);
+            box-shadow: 0 0 25px rgba(100, 200, 255, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(150, 220, 255, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(150, 220, 255, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+        }
+        
+        .wave-info {
+            position: fixed;
+            bottom: 90px;
+            left: 20px;
+            color: rgba(150, 220, 255, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">🌊 波浪 🌊</div>
+    
+    <div class="info">
+        🖱️ 移动鼠标 - 影响波浪 | 🎨 点击 - 改变颜色 | ⚙️ 滚轮 - 调整波浪强度
+    </div>
+    
+    <div class="stats" id="stats">
+        波浪层数: 5 | 振幅: 1.0x | FPS: 60
+    </div>
+    
+    <div class="wave-info" id="waveInfo">
+        波浪类型: 正弦波 | 频率: 中等
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="changeWaveType()">🌊 波浪类型</button>
+        <button class="btn" onclick="changeColorScheme()">🎨 配色方案</button>
+        <button class="btn" onclick="toggleParticles()">✨ 粒子效果</button>
+        <button class="btn" onclick="toggleReflection()">🪞 反射效果</button>
+        <button class="btn" onclick="toggleRainbow()">🌈 彩虹模式</button>
+        <button class="btn" onclick="resetWaves()">🔄 重置波浪</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let time = 0;
+        let amplitude = 1;
+        
+        // 性能监控
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let currentFps = 60;
+        
+        // 波浪配置
+        const waveTypes = [
+            { name: '正弦波', type: 'sine' },
+            { name: '余弦波', type: 'cosine' },
+            { name: '叠加波', type: 'composite' },
+            { name: '心跳波', type: 'heartbeat' }
+        ];
+        let currentWaveType = 0;
+        
+        // 配色方案
+        const colorSchemes = [
+            { name: '海洋', colors: ['#0077be', '#00a8e8', '#00d4ff', '#73d2de', '#ade4db'] },
+            { name: '日落', colors: ['#ff6b6b', '#ffa07a', '#ffb347', '#ffd700', '#ffec8b'] },
+            { name: '极光', colors: ['#00ff88', '#00ffcc', '#00ffff', '#00ccff', '#0099ff'] },
+            { name: '紫晶', colors: ['#8b00ff', '#9932cc', '#ba55d3', '#da70d6', '#ee82ee'] },
+            { name: '森林', colors: ['#228b22', '#32cd32', '#7cfc00', '#adff2f', '#00ff7f'] },
+            { name: '火焰', colors: ['#ff0000', '#ff4500', '#ff6347', '#ff7f50', '#ffa500'] }
+        ];
+        let currentColorScheme = 0;
+        
+        let particlesEnabled = true;
+        let reflectionEnabled = true;
+        let rainbowMode = false;
+        
+        // 粒子类
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = -Math.random() * 3;
+                this.size = 2 + Math.random() * 3;
+                this.life = 1;
+                this.decay = 0.01 + Math.random() * 0.02;
+                this.color = colorSchemes[currentColorScheme].colors[Math.floor(Math.random() * 5)];
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.1; // 重力
+                this.life -= this.decay;
+                return this.life > 0;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life * 0.8;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        let particles = [];
+        
+        // 计算波浪Y坐标
+        function getWaveY(x, layer, time) {
+            const colors = colorSchemes[currentColorScheme].colors;
+            const baseY = height * 0.5 + layer * 40;
+            const waveSpeed = (1 + layer * 0.2);
+            const waveFreq = 0.01 + layer * 0.002;
+            const waveAmp = (40 + layer * 10) * amplitude;
+            
+            let y = 0;
+            const waveConfig = waveTypes[currentWaveType];
+            
+            switch (waveConfig.type) {
+                case 'sine':
+                    y = Math.sin(x * waveFreq + time * waveSpeed) * waveAmp;
+                    break;
+                case 'cosine':
+                    y = Math.cos(x * waveFreq + time * waveSpeed) * waveAmp;
+                    break;
+                case 'composite':
+                    y = Math.sin(x * waveFreq + time * waveSpeed) * waveAmp * 0.5 +
+                        Math.cos(x * waveFreq * 2 + time * waveSpeed * 1.5) * waveAmp * 0.3 +
+                        Math.sin(x * waveFreq * 0.5 + time * waveSpeed * 0.8) * waveAmp * 0.2;
+                    break;
+                case 'heartbeat':
+                    const beat = Math.sin(time * 3) > 0.7 ? 1.5 : 1;
+                    y = Math.sin(x * waveFreq + time * waveSpeed) * waveAmp * beat;
+                    break;
+            }
+            
+            // 鼠标影响
+            const dx = x - mouseX;
+            const influence = Math.max(0, 1 - Math.abs(dx) / 200);
+            y += influence * (mouseY - height / 2) * 0.3;
+            
+            return baseY + y;
+        }
+        
+        // 绘制波浪
+        function drawWaves() {
+            const colors = rainbowMode ? 
+                ['#ff0000', '#ff8800', '#ffff00', '#00ff00', '#00ffff', '#0000ff', '#8800ff'] :
+                colorSchemes[currentColorScheme].colors;
+            
+            const numLayers = colors.length;
+            
+            for (let layer = numLayers - 1; layer >= 0; layer--) {
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                
+                // 绘制波浪路径
+                for (let x = 0; x <= width; x += 5) {
+                    const y = getWaveY(x, layer, time);
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.lineTo(width, height);
+                ctx.closePath();
+                
+                // 创建渐变
+                const gradient = ctx.createLinearGradient(0, height * 0.3, 0, height);
+                const color = colors[layer % colors.length];
+                gradient.addColorStop(0, color + 'cc');
+                gradient.addColorStop(0.5, color + '88');
+                gradient.addColorStop(1, color + '44');
+                
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 波浪顶部高光
+                ctx.beginPath();
+                for (let x = 0; x <= width; x += 5) {
+                    const y = getWaveY(x, layer, time);
+                    if (x === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+        
+        // 绘制反射
+        function drawReflection() {
+            if (!reflectionEnabled) return;
+            
+            ctx.save();
+            ctx.globalAlpha = 0.3;
+            ctx.scale(1, -0.3);
+            ctx.translate(0, -height * 3.3);
+            
+            const colors = colorSchemes[currentColorScheme].colors;
+            const numLayers = colors.length;
+            
+            for (let layer = 0; layer < numLayers; layer++) {
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                
+                for (let x = 0; x <= width; x += 5) {
+                    const y = getWaveY(x, layer, time);
+                    ctx.lineTo(x, y);
+                }
+                
+                ctx.lineTo(width, height);
+                ctx.closePath();
+                
+                const color = colors[layer % colors.length];
+                ctx.fillStyle = color + '44';
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+        
+        // 绘制背景
+        function drawBackground() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#1a3a52');
+            gradient.addColorStop(0.5, '#0d1f2d');
+            gradient.addColorStop(1, '#051520');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        // 动画循环
+        let lastTime = 0;
+        const targetFPS = 60;
+        const interval = 1000 / targetFPS;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            const delta = currentTime - lastTime;
+            if (delta < interval) return;
+            lastTime = currentTime - (delta % interval);
+            
+            // FPS计算
+            frameCount++;
+            if (currentTime - lastFpsUpdate >= 1000) {
+                currentFps = frameCount;
+                frameCount = 0;
+                lastFpsUpdate = currentTime;
+                updateStats();
+            }
+            
+            time += 0.02;
+            
+            // 清除画布
+            drawBackground();
+            
+            // 绘制反射
+            drawReflection();
+            
+            // 绘制波浪
+            drawWaves();
+            
+            // 更新和绘制粒子
+            if (particlesEnabled) {
+                // 在波浪顶部生成粒子
+                if (Math.random() > 0.9) {
+                    const x = Math.random() * width;
+                    const layer = Math.floor(Math.random() * 3);
+                    const y = getWaveY(x, layer, time);
+                    particles.push(new Particle(x, y));
+                }
+                
+                particles = particles.filter(p => {
+                    const alive = p.update();
+                    if (alive) p.draw();
+                    return alive;
+                });
+                
+                // 限制粒子数量
+                if (particles.length > 100) {
+                    particles = particles.slice(-100);
+                }
+            }
+        }
+        
+        function updateStats() {
+            const layers = colorSchemes[currentColorScheme].colors.length;
+            document.getElementById('stats').textContent = 
+                `波浪层数: ${layers} | 振幅: ${amplitude.toFixed(1)}x | FPS: ${currentFps}`;
+            
+            const freq = currentWaveType === 2 ? '复合' : currentWaveType === 3 ? '心跳' : '中等';
+            document.getElementById('waveInfo').textContent = 
+                `波浪类型: ${waveTypes[currentWaveType].name} | 频率: ${freq}`;
+        }
+        
+        // 事件处理
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', () => {
+            changeColorScheme();
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            amplitude = Math.max(0.3, Math.min(2, amplitude - e.deltaY * 0.001));
+            updateStats();
+        });
+        
+        // 控制函数
+        function changeWaveType() {
+            currentWaveType = (currentWaveType + 1) % waveTypes.length;
+            updateStats();
+        }
+        
+        function changeColorScheme() {
+            currentColorScheme = (currentColorScheme + 1) % colorSchemes.length;
+            updateStats();
+        }
+        
+        function toggleParticles() {
+            particlesEnabled = !particlesEnabled;
+            event.target.classList.toggle('active', !particlesEnabled);
+            if (!particlesEnabled) particles = [];
+        }
+        
+        function toggleReflection() {
+            reflectionEnabled = !reflectionEnabled;
+            event.target.classList.toggle('active', !reflectionEnabled);
+        }
+        
+        function toggleRainbow() {
+            rainbowMode = !rainbowMode;
+            event.target.classList.toggle('active', rainbowMode);
+            updateStats();
+        }
+        
+        function resetWaves() {
+            amplitude = 1;
+            currentWaveType = 0;
+            currentColorScheme = 0;
+            particlesEnabled = true;
+            reflectionEnabled = true;
+            rainbowMode = false;
+            particles = [];
+            
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            updateStats();
+        }
+        
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

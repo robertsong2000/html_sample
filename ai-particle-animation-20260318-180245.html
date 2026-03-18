@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>粒子动画 - Particle Animation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 48px;
+            font-weight: 300;
+            letter-spacing: 10px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 20px rgba(255, 100, 255, 0.8),
+                0 0 40px rgba(100, 200, 255, 0.6),
+                0 0 60px rgba(255, 255, 100, 0.4);
+            animation: pulse 3s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.9; letter-spacing: 10px; }
+            50% { opacity: 1; letter-spacing: 12px; }
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.9);
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(255, 100, 255, 0.4);
+        }
+        
+        .btn.active {
+            background: rgba(255, 100, 255, 0.3);
+            box-shadow: 0 0 20px rgba(255, 100, 255, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+        }
+        
+        .particle-info {
+            position: fixed;
+            bottom: 90px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">✨ 粒子 ✨</div>
+    
+    <div class="info">
+        🖱️ 移动鼠标 - 吸引粒子 | 🎨 点击 - 爆发效果 | ⚙️ 滚轮 - 调整粒子数
+    </div>
+    
+    <div class="stats" id="stats">
+        粒子数: 0 | 模式: 自由运动 | FPS: 60
+    </div>
+    
+    <div class="particle-info" id="particleInfo">
+        吸引力: 强 | 连接距离: 150px
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="changeMode()">🌀 运动模式</button>
+        <button class="btn" onclick="changeColorScheme()">🎨 配色方案</button>
+        <button class="btn" onclick="toggleConnections()">🔗 粒子连接</button>
+        <button class="btn" onclick="toggleTrails()">✨ 粒子轨迹</button>
+        <button class="btn" onclick="toggleRepulsion()">💫 排斥模式</button>
+        <button class="btn" onclick="resetParticles()">🔄 重置粒子</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height, centerX, centerY;
+        let mouseX = 0, mouseY = 0;
+        let targetMouseX = 0, targetMouseY = 0;
+        let particleCount = 300;
+        let attractionStrength = 1;
+        
+        // 性能监控
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let currentFps = 60;
+        
+        // 运动模式
+        const motionModes = [
+            { name: '自由运动', type: 'free' },
+            { name: '漩涡', type: 'vortex' },
+            { name: '爆炸', type: 'explosion' },
+            { name: '聚合', type: 'converge' },
+            { name: '波浪', type: 'wave' }
+        ];
+        let currentMode = 0;
+        
+        // 配色方案
+        const colorSchemes = [
+            { name: '彩虹', colors: ['#ff0000', '#ff8800', '#ffff00', '#00ff00', '#00ffff', '#0088ff', '#8800ff'] },
+            { name: '火焰', colors: ['#ff0000', '#ff4400', '#ff8800', '#ffcc00', '#ffff00'] },
+            { name: '极光', colors: ['#00ff88', '#00ffcc', '#00ffff', '#00ccff', '#0088ff', '#8844ff'] },
+            { name: '星云', colors: ['#ff00ff', '#ff44ff', '#ff88ff', '#cc88ff', '#8888ff'] },
+            { name: '森林', colors: ['#004400', '#006600', '#008800', '#00aa00', '#00cc00', '#00ff00'] },
+            { name: '金属', colors: ['#888888', '#aaaaaa', '#cccccc', '#dddddd', '#ffffff', '#ffffaa'] }
+        ];
+        let currentColorScheme = 0;
+        
+        let connectionsEnabled = true;
+        let trailsEnabled = false;
+        let repulsionMode = false;
+        
+        // 粒子类
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.size = 2 + Math.random() * 3;
+                this.color = this.getRandomColor();
+                this.alpha = 0.6 + Math.random() * 0.4;
+                this.trail = [];
+                this.maxTrail = 10;
+                this.life = 1;
+                this.angle = Math.random() * Math.PI * 2;
+                this.orbitRadius = 50 + Math.random() * 150;
+                this.orbitSpeed = 0.01 + Math.random() * 0.02;
+            }
+            
+            getRandomColor() {
+                const colors = colorSchemes[currentColorScheme].colors;
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            update() {
+                // 保存轨迹
+                if (trailsEnabled) {
+                    this.trail.push({ x: this.x, y: this.y });
+                    if (this.trail.length > this.maxTrail) {
+                        this.trail.shift();
+                    }
+                } else {
+                    this.trail = [];
+                }
+                
+                const mode = motionModes[currentMode].type;
+                
+                // 根据模式更新位置
+                switch (mode) {
+                    case 'free':
+                        this.updateFree();
+                        break;
+                    case 'vortex':
+                        this.updateVortex();
+                        break;
+                    case 'explosion':
+                        this.updateExplosion();
+                        break;
+                    case 'converge':
+                        this.updateConverge();
+                        break;
+                    case 'wave':
+                        this.updateWave();
+                        break;
+                }
+                
+                // 鼠标吸引/排斥
+                const dx = mouseX - this.x;
+                const dy = mouseY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < 200 && dist > 0) {
+                    const force = (200 - dist) / 200 * attractionStrength * 0.5;
+                    const direction = repulsionMode ? -1 : 1;
+                    this.vx += (dx / dist) * force * direction;
+                    this.vy += (dy / dist) * force * direction;
+                }
+                
+                // 速度限制
+                const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                if (speed > 10) {
+                    this.vx = (this.vx / speed) * 10;
+                    this.vy = (this.vy / speed) * 10;
+                }
+                
+                // 更新位置
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 边界处理
+                if (this.x < 0) this.x = width;
+                if (this.x > width) this.x = 0;
+                if (this.y < 0) this.y = height;
+                if (this.y > height) this.y = 0;
+                
+                // 摩擦力
+                this.vx *= 0.99;
+                this.vy *= 0.99;
+            }
+            
+            updateFree() {
+                // 添加随机运动
+                this.vx += (Math.random() - 0.5) * 0.2;
+                this.vy += (Math.random() - 0.5) * 0.2;
+            }
+            
+            updateVortex() {
+                const dx = centerX - this.x;
+                const dy = centerY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 10) {
+                    // 切向力（旋转）
+                    this.vx += (-dy / dist) * 0.1;
+                    this.vy += (dx / dist) * 0.1;
+                    
+                    // 向心力
+                    this.vx += (dx / dist) * 0.05;
+                    this.vy += (dy / dist) * 0.05;
+                }
+            }
+            
+            updateExplosion() {
+                const dx = this.x - centerX;
+                const dy = this.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 10) {
+                    this.vx += (dx / dist) * 0.2;
+                    this.vy += (dy / dist) * 0.2;
+                }
+            }
+            
+            updateConverge() {
+                const dx = centerX - this.x;
+                const dy = centerY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > 10) {
+                    this.vx += (dx / dist) * 0.15;
+                    this.vy += (dy / dist) * 0.15;
+                }
+            }
+            
+            updateWave() {
+                const waveY = Math.sin(this.x * 0.01 + Date.now() * 0.002) * 100;
+                const targetY = centerY + waveY;
+                this.vy += (targetY - this.y) * 0.01;
+            }
+            
+            draw() {
+                // 绘制轨迹
+                if (trailsEnabled && this.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    
+                    for (let i = 1; i < this.trail.length; i++) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    
+                    ctx.strokeStyle = this.color;
+                    ctx.globalAlpha = 0.3;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                }
+                
+                // 绘制粒子
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.alpha;
+                ctx.fill();
+                
+                // 发光效果
+                const gradient = ctx.createRadialGradient(
+                    this.x, this.y, 0,
+                    this.x, this.y, this.size * 3
+                );
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+                ctx.fillStyle = gradient;
+                ctx.globalAlpha = this.alpha * 0.3;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        let particles = [];
+        
+        // 绘制粒子连接
+        function drawConnections() {
+            if (!connectionsEnabled) return;
+            
+            const connectionDistance = 150;
+            
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const dx = particles[i].x - particles[j].x;
+                    const dy = particles[i].y - particles[j].y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (dist < connectionDistance) {
+                        const alpha = (1 - dist / connectionDistance) * 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[i].x, particles[i].y);
+                        ctx.lineTo(particles[j].x, particles[j].y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+        
+        // 初始化粒子
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initParticles();
+            window.addEventListener('resize', resize);
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            centerX = width / 2;
+            centerY = height / 2;
+        }
+        
+        // 动画循环
+        let lastTime = 0;
+        const targetFPS = 60;
+        const interval = 1000 / targetFPS;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            const delta = currentTime - lastTime;
+            if (delta < interval) return;
+            lastTime = currentTime - (delta % interval);
+            
+            // FPS计算
+            frameCount++;
+            if (currentTime - lastFpsUpdate >= 1000) {
+                currentFps = frameCount;
+                frameCount = 0;
+                lastFpsUpdate = currentTime;
+                updateStats();
+            }
+            
+            // 清除画布（带拖尾）
+            if (trailsEnabled) {
+                ctx.fillStyle = 'rgba(15, 15, 30, 0.1)';
+            } else {
+                ctx.fillStyle = 'rgba(15, 15, 30, 0.3)';
+            }
+            ctx.fillRect(0, 0, width, height);
+            
+            // 平滑鼠标移动
+            mouseX += (targetMouseX - mouseX) * 0.1;
+            mouseY += (targetMouseY - mouseY) * 0.1;
+            
+            // 绘制连接
+            drawConnections();
+            
+            // 更新和绘制粒子
+            particles.forEach(particle => {
+                particle.update();
+                particle.draw();
+            });
+        }
+        
+        function updateStats() {
+            const modeName = motionModes[currentMode].name;
+            document.getElementById('stats').textContent = 
+                `粒子数: ${particles.length} | 模式: ${modeName} | FPS: ${currentFps}`;
+            
+            const attraction = repulsionMode ? '排斥' : '吸引';
+            document.getElementById('particleInfo').textContent = 
+                `吸引力: ${attraction} | 连接距离: 150px`;
+        }
+        
+        // 事件处理
+        canvas.addEventListener('mousemove', (e) => {
+            targetMouseX = e.clientX;
+            targetMouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            // 爆发效果
+            for (let i = 0; i < 30; i++) {
+                const particle = new Particle();
+                particle.x = e.clientX;
+                particle.y = e.clientY;
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 5 + Math.random() * 5;
+                particle.vx = Math.cos(angle) * speed;
+                particle.vy = Math.sin(angle) * speed;
+                particles.push(particle);
+            }
+            
+            // 限制粒子数量
+            if (particles.length > 1000) {
+                particles = particles.slice(-1000);
+            }
+            
+            updateStats();
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -20 : 20;
+            particleCount = Math.max(50, Math.min(1000, particleCount + delta));
+            
+            if (delta > 0 && particles.length < particleCount) {
+                for (let i = 0; i < delta; i++) {
+                    particles.push(new Particle());
+                }
+            } else if (delta < 0 && particles.length > particleCount) {
+                particles = particles.slice(0, particleCount);
+            }
+            
+            updateStats();
+        });
+        
+        // 控制函数
+        function changeMode() {
+            currentMode = (currentMode + 1) % motionModes.length;
+            updateStats();
+        }
+        
+        function changeColorScheme() {
+            currentColorScheme = (currentColorScheme + 1) % colorSchemes.length;
+            particles.forEach(p => p.color = p.getRandomColor());
+        }
+        
+        function toggleConnections() {
+            connectionsEnabled = !connectionsEnabled;
+            event.target.classList.toggle('active', !connectionsEnabled);
+        }
+        
+        function toggleTrails() {
+            trailsEnabled = !trailsEnabled;
+            event.target.classList.toggle('active', trailsEnabled);
+        }
+        
+        function toggleRepulsion() {
+            repulsionMode = !repulsionMode;
+            event.target.classList.toggle('active', repulsionMode);
+            updateStats();
+        }
+        
+        function resetParticles() {
+            particleCount = 300;
+            currentMode = 0;
+            currentColorScheme = 0;
+            connectionsEnabled = true;
+            trailsEnabled = false;
+            repulsionMode = false;
+            initParticles();
+            
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            updateStats();
+        }
+        
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

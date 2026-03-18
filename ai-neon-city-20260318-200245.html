@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>霓虹城市 - Neon City</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #0a0a15;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff00ff;
+            font-size: 52px;
+            font-weight: bold;
+            letter-spacing: 8px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 10px #ff00ff,
+                0 0 20px #ff00ff,
+                0 0 40px #ff00ff,
+                0 0 80px #ff00ff;
+            animation: neonPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes neonPulse {
+            0%, 100% { 
+                opacity: 1;
+                text-shadow: 0 0 10px #ff00ff, 0 0 20px #ff00ff, 0 0 40px #ff00ff;
+            }
+            50% { 
+                opacity: 0.8;
+                text-shadow: 0 0 20px #ff00ff, 0 0 40px #ff00ff, 0 0 80px #ff00ff;
+            }
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: rgba(255, 0, 255, 0.1);
+            border: 2px solid rgba(255, 0, 255, 0.5);
+            color: #ff00ff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            text-shadow: 0 0 10px #ff00ff;
+        }
+        
+        .btn:hover {
+            background: rgba(255, 0, 255, 0.2);
+            border-color: #ff00ff;
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        .btn.active {
+            background: rgba(255, 0, 255, 0.3);
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.8);
+        }
+        
+        .info {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 255, 0.7);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.5);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .city-info {
+            position: fixed;
+            bottom: 90px;
+            left: 20px;
+            color: rgba(255, 0, 255, 0.5);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">NEON CITY</div>
+    
+    <div class="info">
+        🖱️ 移动鼠标 - 霓虹追踪 | 🎨 点击 - 霓虹爆发 | ⚙️ 滚轮 - 调整霓虹强度
+    </div>
+    
+    <div class="stats" id="stats">
+        建筑: 0 | 霓虹灯: 0 | FPS: 60
+    </div>
+    
+    <div class="city-info" id="cityInfo">
+        模式: 夜景 | 霓虹强度: 100%
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="changeNeonColor()">🎨 霓虹配色</button>
+        <button class="btn" onclick="toggleRain()">🌧️ 雨天效果</button>
+        <button class="btn" onclick="toggleCars()">🚗 车流效果</button>
+        <button class="btn" onclick="toggleFlicker()">⚡ 灯光闪烁</button>
+        <button class="btn" onclick="addBuilding()">🏗️ 新建建筑</button>
+        <button class="btn" onclick="resetCity()">🔄 重置城市</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let neonIntensity = 1;
+        let time = 0;
+        
+        // 性能监控
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let currentFps = 60;
+        
+        // 霓虹配色方案
+        const neonSchemes = [
+            { name: '经典', primary: '#ff00ff', secondary: '#00ffff', accent: '#ffff00' },
+            { name: '赛博', primary: '#00ff88', secondary: '#ff0088', accent: '#0088ff' },
+            { name: '复古', primary: '#ff6600', secondary: '#ffcc00', accent: '#ff0066' },
+            { name: '未来', primary: '#00ffff', secondary: '#ff00ff', accent: '#ffff00' },
+            { name: '暗夜', primary: '#8800ff', secondary: '#ff0088', accent: '#00ff88' }
+        ];
+        let currentScheme = 0;
+        
+        let rainEnabled = false;
+        let carsEnabled = true;
+        let flickerEnabled = true;
+        
+        // 建筑类
+        class Building {
+            constructor(x) {
+                this.x = x;
+                this.width = 60 + Math.random() * 100;
+                this.height = 150 + Math.random() * 350;
+                this.windows = [];
+                this.neonLights = [];
+                this.initWindows();
+                this.initNeonLights();
+            }
+            
+            initWindows() {
+                const rows = Math.floor(this.height / 30);
+                const cols = Math.floor(this.width / 25);
+                
+                for (let row = 0; row < rows; row++) {
+                    for (let col = 0; col < cols; col++) {
+                        this.windows.push({
+                            x: col * 25 + 5,
+                            y: row * 30 + 15,
+                            lit: Math.random() > 0.3,
+                            color: Math.random() > 0.7 ? 'accent' : 'normal',
+                            flicker: Math.random() > 0.9
+                        });
+                    }
+                }
+            }
+            
+            initNeonLights() {
+                const scheme = neonSchemes[currentScheme];
+                const numLights = 1 + Math.floor(Math.random() * 3);
+                
+                for (let i = 0; i < numLights; i++) {
+                    this.neonLights.push({
+                        y: Math.random() * this.height * 0.7,
+                        color: [scheme.primary, scheme.secondary, scheme.accent][Math.floor(Math.random() * 3)],
+                        flickerPhase: Math.random() * Math.PI * 2,
+                        flickerSpeed: 0.05 + Math.random() * 0.1
+                    });
+                }
+            }
+            
+            draw() {
+                const groundY = height * 0.85;
+                const buildingY = groundY - this.height;
+                const scheme = neonSchemes[currentScheme];
+                
+                // 建筑主体
+                const gradient = ctx.createLinearGradient(this.x, buildingY, this.x + this.width, buildingY);
+                gradient.addColorStop(0, '#1a1a2e');
+                gradient.addColorStop(1, '#0a0a1e');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(this.x, buildingY, this.width, this.height);
+                
+                // 建筑轮廓（霓虹效果）
+                ctx.strokeStyle = scheme.primary;
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = scheme.primary;
+                ctx.strokeRect(this.x, buildingY, this.width, this.height);
+                ctx.shadowBlur = 0;
+                
+                // 窗户
+                this.windows.forEach(win => {
+                    if (!win.lit) return;
+                    
+                    const wx = this.x + win.x;
+                    const wy = buildingY + win.y;
+                    
+                    let alpha = 0.7;
+                    if (flickerEnabled && win.flicker) {
+                        alpha = 0.5 + 0.5 * Math.sin(time * 10 + win.x);
+                    }
+                    
+                    const winColor = win.color === 'accent' ? scheme.accent : '#ffff99';
+                    
+                    ctx.fillStyle = winColor;
+                    ctx.globalAlpha = alpha * neonIntensity;
+                    ctx.fillRect(wx, wy, 18, 22);
+                    
+                    // 窗户发光
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = winColor;
+                    ctx.fillRect(wx, wy, 18, 22);
+                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = 1;
+                });
+                
+                // 霓虹灯
+                this.neonLights.forEach(light => {
+                    const ly = buildingY + light.y;
+                    
+                    let alpha = 0.8;
+                    if (flickerEnabled) {
+                        light.flickerPhase += light.flickerSpeed;
+                        alpha = 0.6 + 0.4 * Math.sin(light.flickerPhase);
+                    }
+                    
+                    ctx.fillStyle = light.color;
+                    ctx.globalAlpha = alpha * neonIntensity;
+                    
+                    // 横向霓虹灯
+                    ctx.fillRect(this.x + 5, ly, this.width - 10, 8);
+                    
+                    // 发光效果
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = light.color;
+                    ctx.fillRect(this.x + 5, ly, this.width - 10, 8);
+                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = 1;
+                });
+            }
+        }
+        
+        // 车辆类
+        class Car {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.direction = Math.random() > 0.5 ? 1 : -1;
+                this.x = this.direction > 0 ? -100 : width + 100;
+                this.y = height * 0.87 + (Math.random() - 0.5) * 10;
+                this.speed = (3 + Math.random() * 4) * this.direction;
+                this.width = 40 + Math.random() * 20;
+                this.height = 20;
+                this.color = neonSchemes[currentScheme].primary;
+                this.taillightColor = '#ff0000';
+            }
+            
+            update() {
+                this.x += this.speed;
+                
+                if ((this.direction > 0 && this.x > width + 150) ||
+                    (this.direction < 0 && this.x < -150)) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                if (!carsEnabled) return;
+                
+                // 车身
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+                
+                // 车灯
+                const frontX = this.direction > 0 ? this.x + this.width : this.x;
+                const backX = this.direction > 0 ? this.x : this.x + this.width;
+                
+                // 前灯（白色）
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ffffff';
+                ctx.fillRect(frontX - 3, this.y + 5, 6, 10);
+                
+                // 尾灯（红色）
+                ctx.fillStyle = '#ff0000';
+                ctx.shadowColor = '#ff0000';
+                ctx.fillRect(backX - 3, this.y + 5, 6, 10);
+                ctx.shadowBlur = 0;
+                
+                // 车灯光束
+                if (this.direction > 0) {
+                    const gradient = ctx.createLinearGradient(frontX, this.y, frontX + 100, this.y);
+                    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(frontX, this.y - 20, 100, this.height + 40);
+                }
+            }
+        }
+        
+        // 雨滴类
+        class Raindrop {
+            constructor() {
+                this.reset();
+            }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = -10;
+                this.speed = 10 + Math.random() * 10;
+                this.length = 10 + Math.random() * 20;
+            }
+            
+            update() {
+                this.y += this.speed;
+                this.x -= 2; // 风的影响
+                
+                if (this.y > height) {
+                    this.reset();
+                }
+            }
+            
+            draw() {
+                if (!rainEnabled) return;
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.x - 2, this.y + this.length);
+                ctx.strokeStyle = 'rgba(150, 200, 255, 0.5)';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+            }
+        }
+        
+        let buildings = [];
+        let cars = [];
+        let raindrops = [];
+        
+        // 初始化城市
+        function initCity() {
+            buildings = [];
+            cars = [];
+            raindrops = [];
+            
+            // 创建建筑
+            let x = 0;
+            while (x < width + 150) {
+                const building = new Building(x);
+                buildings.push(building);
+                x += building.width + 10 + Math.random() * 30;
+            }
+            
+            // 创建车辆
+            for (let i = 0; i < 15; i++) {
+                const car = new Car();
+                car.x = Math.random() * width;
+                cars.push(car);
+            }
+            
+            // 创建雨滴
+            for (let i = 0; i < 200; i++) {
+                const drop = new Raindrop();
+                drop.y = Math.random() * height;
+                raindrops.push(drop);
+            }
+        }
+        
+        // 绘制天空
+        function drawSky() {
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a0a15');
+            gradient.addColorStop(0.5, '#1a0a2e');
+            gradient.addColorStop(1, '#0a0a15');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            // 霓虹光晕
+            const scheme = neonSchemes[currentScheme];
+            const glowGradient = ctx.createRadialGradient(
+                width / 2, height * 0.6, 0,
+                width / 2, height * 0.6, height
+            );
+            glowGradient.addColorStop(0, scheme.primary + '11');
+            glowGradient.addColorStop(0.5, scheme.secondary + '08');
+            glowGradient.addColorStop(1, 'transparent');
+            
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(0, 0, width, height);
+        }
+        
+        // 绘制地面
+        function drawGround() {
+            const groundY = height * 0.85;
+            const scheme = neonSchemes[currentScheme];
+            
+            // 地面
+            const gradient = ctx.createLinearGradient(0, groundY, 0, height);
+            gradient.addColorStop(0, '#1a1a2e');
+            gradient.addColorStop(1, '#0a0a1e');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, groundY, width, height - groundY);
+            
+            // 道路
+            ctx.fillStyle = '#0a0a1e';
+            ctx.fillRect(0, groundY + height * 0.01, width, height * 0.04);
+            
+            // 道路标线
+            ctx.strokeStyle = scheme.accent;
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = scheme.accent;
+            ctx.setLineDash([30, 50]);
+            ctx.beginPath();
+            ctx.moveTo(0, groundY + height * 0.03);
+            ctx.lineTo(width, groundY + height * 0.03);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.shadowBlur = 0;
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            initCity();
+            window.addEventListener('resize', () => {
+                resize();
+                initCity();
+            });
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        // 动画循环
+        let lastTime = 0;
+        const targetFPS = 60;
+        const interval = 1000 / targetFPS;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            const delta = currentTime - lastTime;
+            if (delta < interval) return;
+            lastTime = currentTime - (delta % interval);
+            
+            // FPS计算
+            frameCount++;
+            if (currentTime - lastFpsUpdate >= 1000) {
+                currentFps = frameCount;
+                frameCount = 0;
+                lastFpsUpdate = currentTime;
+                updateStats();
+            }
+            
+            time += 0.016;
+            
+            // 绘制场景
+            drawSky();
+            drawGround();
+            
+            // 绘制建筑
+            buildings.forEach(building => building.draw());
+            
+            // 更新和绘制车辆
+            cars.forEach(car => {
+                car.update();
+                car.draw();
+            });
+            
+            // 更新和绘制雨滴
+            raindrops.forEach(drop => {
+                drop.update();
+                drop.draw();
+            });
+            
+            // 鼠标霓虹追踪
+            const scheme = neonSchemes[currentScheme];
+            const mouseGradient = ctx.createRadialGradient(
+                mouseX, mouseY, 0,
+                mouseX, mouseY, 100
+            );
+            mouseGradient.addColorStop(0, scheme.primary + '44');
+            mouseGradient.addColorStop(1, 'transparent');
+            ctx.fillStyle = mouseGradient;
+            ctx.fillRect(mouseX - 100, mouseY - 100, 200, 200);
+        }
+        
+        function updateStats() {
+            const neonCount = buildings.reduce((sum, b) => sum + b.neonLights.length, 0);
+            document.getElementById('stats').textContent = 
+                `建筑: ${buildings.length} | 霓虹灯: ${neonCount} | FPS: ${currentFps}`;
+            
+            const mode = rainEnabled ? '雨天' : '夜景';
+            const intensity = Math.floor(neonIntensity * 100);
+            document.getElementById('cityInfo').textContent = 
+                `模式: ${mode} | 霓虹强度: ${intensity}%`;
+        }
+        
+        // 事件处理
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            // 霓虹爆发效果
+            const scheme = neonSchemes[currentScheme];
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    const x = e.clientX + (Math.random() - 0.5) * 100;
+                    const y = e.clientY + (Math.random() - 0.5) * 100;
+                    const gradient = ctx.createRadialGradient(x, y, 0, x, y, 50);
+                    gradient.addColorStop(0, scheme.primary);
+                    gradient.addColorStop(1, 'transparent');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(x - 50, y - 50, 100, 100);
+                }, i * 50);
+            }
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            neonIntensity = Math.max(0.3, Math.min(1.5, neonIntensity - e.deltaY * 0.001));
+            updateStats();
+        });
+        
+        // 控制函数
+        function changeNeonColor() {
+            currentScheme = (currentScheme + 1) % neonSchemes.length;
+            buildings.forEach(b => {
+                b.neonLights = [];
+                b.initNeonLights();
+            });
+            cars.forEach(c => c.color = neonSchemes[currentScheme].primary);
+        }
+        
+        function toggleRain() {
+            rainEnabled = !rainEnabled;
+            event.target.classList.toggle('active', rainEnabled);
+            updateStats();
+        }
+        
+        function toggleCars() {
+            carsEnabled = !carsEnabled;
+            event.target.classList.toggle('active', !carsEnabled);
+        }
+        
+        function toggleFlicker() {
+            flickerEnabled = !flickerEnabled;
+            event.target.classList.toggle('active', !flickerEnabled);
+        }
+        
+        function addBuilding() {
+            const x = Math.random() * width;
+            buildings.push(new Building(x));
+            updateStats();
+        }
+        
+        function resetCity() {
+            neonIntensity = 1;
+            currentScheme = 0;
+            rainEnabled = false;
+            carsEnabled = true;
+            flickerEnabled = true;
+            initCity();
+            
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            updateStats();
+        }
+        
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

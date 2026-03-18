@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水晶折射 - Crystal Refraction</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; background: #0a0a15; font-family: 'Segoe UI', sans-serif; }
+        canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
+        .info {
+            position: fixed; bottom: 20px; left: 20px; color: rgba(200,220,255,0.9);
+            font-size: 14px; z-index: 10; background: rgba(10,15,30,0.8);
+            padding: 15px 20px; border-radius: 10px;
+            border: 1px solid rgba(100,150,255,0.3); max-width: 280px;
+        }
+        .info h3 { margin-bottom: 10px; font-size: 16px; color: #88ccff; text-shadow: 0 0 20px rgba(100,150,255,0.6); }
+        .info p { margin: 5px 0; font-size: 12px; line-height: 1.6; }
+        .info .key { color: #aaddff; font-weight: bold; }
+        .stats {
+            position: fixed; top: 20px; right: 20px; color: rgba(255,255,255,0.7);
+            font-size: 12px; z-index: 10; background: rgba(10,15,30,0.8);
+            padding: 10px 15px; border-radius: 8px; font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="crystal"></canvas>
+    <div class="info">
+        <h3>💎 水晶折射</h3>
+        <p><span class="key">移动鼠标</span> - 控制光源位置</p>
+        <p><span class="key">点击</span> - 产生彩虹散射</p>
+        <p><span class="key">滚轮</span> - 调整晶体数量</p>
+        <p><span class="key">空格</span> - 切换折射模式</p>
+    </div>
+    <div class="stats" id="stats">FPS: 60 | 晶体: 0</div>
+
+    <script>
+        const canvas = document.getElementById('crystal');
+        const ctx = canvas.getContext('2d');
+        const statsEl = document.getElementById('stats');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let crystalCount = 8;
+        let refractionMode = 0;
+        let time = 0;
+        
+        const refractionModes = [
+            { name: '棱镜', colors: ['#ff0040', '#ff8000', '#ffff00', '#00ff00', '#00ffff', '#0080ff', '#8000ff'] },
+            { name: '冰晶', colors: ['#88ddff', '#aaeeff', '#ccffff', '#88ccff', '#aaddff'] },
+            { name: '熔岩', colors: ['#ff4400', '#ff6600', '#ff8800', '#ffaa00', '#ffcc00'] }
+        ];
+        
+        class Crystal {
+            constructor() { this.reset(); }
+            
+            reset() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = 40 + Math.random() * 60;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.01;
+                this.sides = 4 + Math.floor(Math.random() * 4);
+                this.alpha = 0.3 + Math.random() * 0.4;
+                this.refractedRays = [];
+            }
+            
+            update(lightX, lightY) {
+                this.rotation += this.rotationSpeed;
+                
+                const dx = lightX - this.x;
+                const dy = lightY - this.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                
+                this.brightness = Math.max(0.3, 1 - dist / 400);
+                
+                // 生成折射光线
+                if (Math.random() < 0.05) {
+                    this.generateRefractedRay(angle);
+                }
+                
+                // 更新折射光线
+                this.refractedRays = this.refractedRays.filter(ray => {
+                    ray.alpha -= 0.02;
+                    ray.length += 5;
+                    return ray.alpha > 0;
+                });
+            }
+            
+            generateRefractedRay(incomingAngle) {
+                const colors = refractionModes[refractionMode].colors;
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const refractAngle = incomingAngle + (Math.random() - 0.5) * Math.PI * 0.8;
+                
+                this.refractedRays.push({
+                    angle: refractAngle,
+                    color: color,
+                    alpha: 0.8,
+                    length: 20
+                });
+            }
+            
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                // 绘制折射光线
+                this.refractedRays.forEach(ray => {
+                    const endX = Math.cos(ray.angle) * ray.length;
+                    const endY = Math.sin(ray.angle) * ray.length;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(endX, endY);
+                    ctx.strokeStyle = this.hexToRgba(ray.color, ray.alpha * this.brightness);
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                });
+                
+                // 绘制晶体
+                ctx.beginPath();
+                for (let i = 0; i <= this.sides; i++) {
+                    const angle = (i / this.sides) * Math.PI * 2 - Math.PI / 2;
+                    const x = Math.cos(angle) * this.size;
+                    const y = Math.sin(angle) * this.size;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                
+                // 晶体渐变
+                const gradient = ctx.createLinearGradient(-this.size, -this.size, this.size, this.size);
+                gradient.addColorStop(0, `rgba(200, 220, 255, ${this.alpha * this.brightness * 0.5})`);
+                gradient.addColorStop(0.5, `rgba(255, 255, 255, ${this.alpha * this.brightness * 0.3})`);
+                gradient.addColorStop(1, `rgba(180, 200, 255, ${this.alpha * this.brightness * 0.4})`);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+                
+                // 边缘
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.alpha * this.brightness})`;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                
+                // 高光
+                ctx.beginPath();
+                ctx.moveTo(-this.size * 0.3, -this.size * 0.3);
+                ctx.lineTo(-this.size * 0.1, -this.size * 0.5);
+                ctx.lineTo(this.size * 0.1, -this.size * 0.3);
+                ctx.closePath();
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha * this.brightness * 0.5})`;
+                ctx.fill();
+                
+                ctx.restore();
+            }
+            
+            hexToRgba(hex, alpha) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+        }
+        
+        class LightBeam {
+            constructor(x, y, angle, color) {
+                this.x = x;
+                this.y = y;
+                this.angle = angle;
+                this.color = color;
+                this.length = 0;
+                this.maxLength = 300;
+                this.speed = 15;
+                this.alpha = 1;
+            }
+            
+            update() {
+                this.length += this.speed;
+                this.alpha = 1 - (this.length / this.maxLength);
+                return this.length < this.maxLength;
+            }
+            
+            draw(ctx) {
+                const endX = this.x + Math.cos(this.angle) * this.length;
+                const endY = this.y + Math.sin(this.angle) * this.length;
+                
+                const gradient = ctx.createLinearGradient(this.x, this.y, endX, endY);
+                gradient.addColorStop(0, this.color);
+                gradient.addColorStop(1, 'transparent');
+                
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(endX, endY);
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.globalAlpha = this.alpha;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        let crystals = [];
+        let lightBeams = [];
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let fps = 60;
+        
+        function init() {
+            resize();
+            createCrystals();
+        }
+        
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            ctx.scale(dpr, dpr);
+        }
+        
+        function createCrystals() {
+            crystals = [];
+            for (let i = 0; i < crystalCount; i++) {
+                crystals.push(new Crystal());
+            }
+        }
+        
+        function createLightBurst(x, y) {
+            const colors = refractionModes[refractionMode].colors;
+            const count = colors.length;
+            
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2;
+                lightBeams.push(new LightBeam(x, y, angle, colors[i]));
+            }
+        }
+        
+        function drawLightSource() {
+            const glow = ctx.createRadialGradient(mouseX, mouseY, 0, mouseX, mouseY, 80);
+            glow.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+            glow.addColorStop(0.3, 'rgba(255, 255, 200, 0.5)');
+            glow.addColorStop(1, 'transparent');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 80, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 10, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+        }
+        
+        function animate(currentTime) {
+            frameCount++;
+            if (currentTime - lastTime >= 1000) {
+                fps = frameCount;
+                frameCount = 0;
+                lastTime = currentTime;
+            }
+            
+            time++;
+            
+            ctx.fillStyle = 'rgba(10, 10, 21, 0.1)';
+            ctx.fillRect(0, 0, width, height);
+            
+            drawLightSource();
+            
+            crystals.forEach(crystal => {
+                crystal.update(mouseX, mouseY);
+                crystal.draw(ctx);
+            });
+            
+            lightBeams = lightBeams.filter(beam => {
+                const alive = beam.update();
+                if (alive) beam.draw(ctx);
+                return alive;
+            });
+            
+            statsEl.textContent = `FPS: ${fps} | 晶体: ${crystals.length} | ${refractionModes[refractionMode].name}`;
+            requestAnimationFrame(animate);
+        }
+        
+        window.addEventListener('resize', () => { resize(); createCrystals(); });
+        canvas.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        canvas.addEventListener('click', e => { createLightBurst(e.clientX, e.clientY); });
+        canvas.addEventListener('wheel', e => {
+            e.preventDefault();
+            crystalCount = Math.max(3, Math.min(20, crystalCount - Math.sign(e.deltaY)));
+            createCrystals();
+        });
+        document.addEventListener('keydown', e => {
+            if (e.code === 'Space') { e.preventDefault(); refractionMode = (refractionMode + 1) % refractionModes.length; }
+        });
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+            createLightBurst(t.clientX, t.clientY);
+        });
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            const t = e.touches[0];
+            mouseX = t.clientX; mouseY = t.clientY;
+        });
+        
+        init();
+        animate(performance.now());
+    </script>
+</body>
+</html>

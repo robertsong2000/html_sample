@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>等离子场 - Plasma Field</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 255, 0.9);
+            font-size: 48px;
+            font-weight: 300;
+            letter-spacing: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 20px rgba(0, 255, 255, 0.8),
+                0 0 40px rgba(255, 0, 255, 0.6),
+                0 0 60px rgba(0, 255, 255, 0.4);
+            animation: plasmaGlow 3s ease-in-out infinite;
+        }
+        
+        @keyframes plasmaGlow {
+            0%, 100% { 
+                text-shadow: 0 0 20px rgba(0, 255, 255, 0.8), 0 0 40px rgba(255, 0, 255, 0.6);
+            }
+            50% { 
+                text-shadow: 0 0 30px rgba(255, 0, 255, 0.8), 0 0 60px rgba(0, 255, 255, 0.6);
+            }
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            background: rgba(0, 255, 255, 0.1);
+            border: 1px solid rgba(0, 255, 255, 0.4);
+            color: rgba(0, 255, 255, 0.9);
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .btn:hover {
+            background: rgba(0, 255, 255, 0.2);
+            border-color: rgba(0, 255, 255, 0.6);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 255, 255, 0.4);
+        }
+        
+        .btn.active {
+            background: rgba(255, 0, 255, 0.3);
+            box-shadow: 0 0 20px rgba(255, 0, 255, 0.6);
+        }
+        
+        .info {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 255, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+        }
+        
+        .plasma-info {
+            position: fixed;
+            bottom: 90px;
+            left: 20px;
+            color: rgba(255, 0, 255, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">⚡ 等离子 ⚡</div>
+    
+    <div class="info">
+        🖱️ 移动鼠标 - 扰动等离子 | 🎨 点击 - 能量脉冲 | ⚙️ 滚轮 - 调整频率
+    </div>
+    
+    <div class="stats" id="stats">
+        频率: 1.0x | 能量: 100% | FPS: 60
+    </div>
+    
+    <div class="plasma-info" id="plasmaInfo">
+        模式: 经典 | 颜色: 青紫
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="changePlasmaMode()">🌀 等离子模式</button>
+        <button class="btn" onclick="changeColorScheme()">🎨 配色方案</button>
+        <button class="btn" onclick="toggleDistortion()">💫 扭曲效果</button>
+        <button class="btn" onclick="togglePulse()">💓 脉冲效果</button>
+        <button class="btn" onclick="toggleParticles()">✨ 粒子效果</button>
+        <button class="btn" onclick="resetPlasma()">🔄 重置等离子</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let frequency = 1;
+        let time = 0;
+        let energy = 1;
+        
+        // 性能监控
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let currentFps = 60;
+        
+        // 等离子模式
+        const plasmaModes = [
+            { name: '经典', type: 'classic' },
+            { name: '漩涡', type: 'vortex' },
+            { name: '波浪', type: 'wave' },
+            { name: '脉冲', type: 'pulse' }
+        ];
+        let currentMode = 0;
+        
+        // 配色方案
+        const colorSchemes = [
+            { name: '青紫', c1: [0, 255, 255], c2: [255, 0, 255], c3: [0, 128, 255] },
+            { name: '火焰', c1: [255, 100, 0], c2: [255, 0, 100], c3: [255, 200, 0] },
+            { name: '极光', c1: [0, 255, 128], c2: [128, 0, 255], c3: [0, 255, 255] },
+            { name: '彩虹', c1: [255, 0, 0], c2: [0, 255, 0], c3: [0, 0, 255] },
+            { name: '金属', c1: [192, 192, 192], c2: [128, 128, 128], c3: [255, 255, 255] },
+            { name: '毒液', c1: [0, 255, 0], c2: [128, 255, 0], c3: [0, 128, 0] }
+        ];
+        let currentColorScheme = 0;
+        
+        let distortionEnabled = true;
+        let pulseEnabled = true;
+        let particlesEnabled = true;
+        
+        // 等离子粒子
+        class PlasmaParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = (Math.random() - 0.5) * 4;
+                this.life = 1;
+                this.decay = 0.02 + Math.random() * 0.02;
+                this.size = 2 + Math.random() * 4;
+                this.color = this.getColor();
+            }
+            
+            getColor() {
+                const scheme = colorSchemes[currentColorScheme];
+                const colors = [scheme.c1, scheme.c2, scheme.c3];
+                return colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size *= 0.98;
+                return this.life > 0;
+            }
+            
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${this.life})`;
+                ctx.fill();
+                
+                // 发光
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = `rgba(${this.color[0]}, ${this.color[1]}, ${this.color[2]}, ${this.life})`;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+        }
+        
+        let particles = [];
+        
+        // 等离子场渲染（使用像素操作优化）
+        function drawPlasmaField() {
+            const imageData = ctx.createImageData(width, height);
+            const data = imageData.data;
+            
+            const scale = 4; // 降低分辨率提高性能
+            const w = Math.floor(width / scale);
+            const h = Math.floor(height / scale);
+            
+            const scheme = colorSchemes[currentColorScheme];
+            const mode = plasmaModes[currentMode].type;
+            
+            for (let py = 0; py < h; py++) {
+                for (let px = 0; px < w; px++) {
+                    const x = px / w * 8 - 4;
+                    const y = py / h * 8 - 4;
+                    
+                    let value = 0;
+                    
+                    // 根据模式计算等离子值
+                    switch (mode) {
+                        case 'classic':
+                            value = Math.sin(x * frequency + time) +
+                                    Math.sin(y * frequency + time) +
+                                    Math.sin((x + y) * frequency + time) +
+                                    Math.sin(Math.sqrt(x * x + y * y) * frequency + time);
+                            break;
+                        case 'vortex':
+                            const angle = Math.atan2(y, x);
+                            const dist = Math.sqrt(x * x + y * y);
+                            value = Math.sin(angle * 3 + time * 2) +
+                                    Math.sin(dist * frequency - time) +
+                                    Math.sin(x * y * frequency + time);
+                            break;
+                        case 'wave':
+                            value = Math.sin(x * frequency * 2 + time * 2) * Math.cos(y * frequency + time) +
+                                    Math.sin(y * frequency * 2 + time * 2) +
+                                    Math.sin((x + y) * frequency + time * 1.5);
+                            break;
+                        case 'pulse':
+                            const pulseDist = Math.sqrt(x * x + y * y);
+                            const pulse = pulseEnabled ? Math.sin(time * 3) * 0.5 + 1 : 1;
+                            value = Math.sin(pulseDist * frequency * pulse - time * 2) +
+                                    Math.sin(x * frequency + time) +
+                                    Math.sin(y * frequency + time);
+                            break;
+                    }
+                    
+                    // 鼠标影响
+                    if (distortionEnabled) {
+                        const mx = (mouseX / width * 8 - 4);
+                        const my = (mouseY / height * 8 - 4);
+                        const mDist = Math.sqrt((x - mx) * (x - mx) + (y - my) * (y - my));
+                        if (mDist < 2) {
+                            value += Math.sin(mDist * 10 - time * 5) * (2 - mDist);
+                        }
+                    }
+                    
+                    value = (value + 4) / 8; // 归一化到 0-1
+                    
+                    // 颜色映射
+                    const r = Math.floor(scheme.c1[0] * value + scheme.c2[0] * (1 - value));
+                    const g = Math.floor(scheme.c1[1] * value + scheme.c2[1] * (1 - value));
+                    const b = Math.floor(scheme.c1[2] * value + scheme.c2[2] * (1 - value));
+                    
+                    // 填充像素块
+                    for (let sy = 0; sy < scale; sy++) {
+                        for (let sx = 0; sx < scale; sx++) {
+                            const index = ((py * scale + sy) * width + (px * scale + sx)) * 4;
+                            data[index] = r;
+                            data[index + 1] = g;
+                            data[index + 2] = b;
+                            data[index + 3] = 255;
+                        }
+                    }
+                }
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        
+        // 动画循环
+        let lastTime = 0;
+        const targetFPS = 30; // 降低帧率以提高性能
+        const interval = 1000 / targetFPS;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            const delta = currentTime - lastTime;
+            if (delta < interval) return;
+            lastTime = currentTime - (delta % interval);
+            
+            // FPS计算
+            frameCount++;
+            if (currentTime - lastFpsUpdate >= 1000) {
+                currentFps = frameCount;
+                frameCount = 0;
+                lastFpsUpdate = currentTime;
+                updateStats();
+            }
+            
+            time += 0.02 * frequency;
+            
+            // 绘制等离子场
+            drawPlasmaField();
+            
+            // 更新和绘制粒子
+            if (particlesEnabled) {
+                // 随机生成粒子
+                if (Math.random() > 0.8) {
+                    particles.push(new PlasmaParticle(
+                        Math.random() * width,
+                        Math.random() * height
+                    ));
+                }
+                
+                particles = particles.filter(p => {
+                    const alive = p.update();
+                    if (alive) p.draw();
+                    return alive;
+                });
+                
+                // 限制粒子数量
+                if (particles.length > 100) {
+                    particles = particles.slice(-100);
+                }
+            }
+        }
+        
+        function updateStats() {
+            const energyPercent = Math.floor(energy * 100);
+            document.getElementById('stats').textContent = 
+                `频率: ${frequency.toFixed(1)}x | 能量: ${energyPercent}% | FPS: ${currentFps}`;
+            
+            const modeName = plasmaModes[currentMode].name;
+            const colorName = colorSchemes[currentColorScheme].name;
+            document.getElementById('plasmaInfo').textContent = 
+                `模式: ${modeName} | 颜色: ${colorName}`;
+        }
+        
+        // 事件处理
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            // 能量脉冲
+            energy = 1.5;
+            for (let i = 0; i < 30; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 50;
+                particles.push(new PlasmaParticle(
+                    e.clientX + Math.cos(angle) * dist,
+                    e.clientY + Math.sin(angle) * dist
+                ));
+            }
+            
+            setTimeout(() => { energy = 1; }, 500);
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            frequency = Math.max(0.5, Math.min(3, frequency - e.deltaY * 0.001));
+            updateStats();
+        });
+        
+        // 控制函数
+        function changePlasmaMode() {
+            currentMode = (currentMode + 1) % plasmaModes.length;
+            updateStats();
+        }
+        
+        function changeColorScheme() {
+            currentColorScheme = (currentColorScheme + 1) % colorSchemes.length;
+            updateStats();
+        }
+        
+        function toggleDistortion() {
+            distortionEnabled = !distortionEnabled;
+            event.target.classList.toggle('active', !distortionEnabled);
+        }
+        
+        function togglePulse() {
+            pulseEnabled = !pulseEnabled;
+            event.target.classList.toggle('active', !pulseEnabled);
+        }
+        
+        function toggleParticles() {
+            particlesEnabled = !particlesEnabled;
+            event.target.classList.toggle('active', !particlesEnabled);
+            if (!particlesEnabled) particles = [];
+        }
+        
+        function resetPlasma() {
+            frequency = 1;
+            energy = 1;
+            currentMode = 0;
+            currentColorScheme = 0;
+            distortionEnabled = true;
+            pulseEnabled = true;
+            particlesEnabled = true;
+            particles = [];
+            
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            updateStats();
+        }
+        
+        // 启动
+        init();
+        animate(0);
+    </script>
+</body>
+</html>

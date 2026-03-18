@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>矩阵雨 - Matrix Rain</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        .title {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ff00;
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 10px;
+            z-index: 10;
+            pointer-events: none;
+            text-shadow: 
+                0 0 10px #00ff00,
+                0 0 20px #00ff00,
+                0 0 30px #00ff00,
+                0 0 40px #00ff00;
+            animation: glitch 5s infinite;
+        }
+        
+        @keyframes glitch {
+            0%, 90%, 100% {
+                opacity: 1;
+                transform: translateX(-50%);
+            }
+            92% {
+                opacity: 0.8;
+                transform: translateX(-48%);
+            }
+            94% {
+                opacity: 0.9;
+                transform: translateX(-52%);
+            }
+            96% {
+                opacity: 0.7;
+                transform: translateX(-50%);
+            }
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 10;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 90%;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            background: rgba(0, 255, 0, 0.1);
+            border: 2px solid rgba(0, 255, 0, 0.5);
+            color: #00ff00;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s ease;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .btn:hover {
+            background: rgba(0, 255, 0, 0.2);
+            border-color: #00ff00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+            transform: translateY(-2px);
+        }
+        
+        .btn.active {
+            background: rgba(0, 255, 0, 0.3);
+            box-shadow: 0 0 30px rgba(0, 255, 0, 0.7);
+        }
+        
+        .info {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(0, 255, 0, 0.5);
+            font-size: 12px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: rgba(0, 255, 0, 0.4);
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .message {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ff00;
+            font-size: 14px;
+            z-index: 10;
+            pointer-events: none;
+            text-align: center;
+            font-family: 'Courier New', monospace;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            text-shadow: 0 0 10px #00ff00;
+        }
+        
+        .message.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">MATRIX</div>
+    
+    <div class="info">
+        🖱️ 移动鼠标 - 影响下落方向 | 🎨 点击 - 产生涟漪 | ⚙️ 滚轮 - 调整速度
+    </div>
+    
+    <div class="stats" id="stats">
+        列: 0 | FPS: 60 | 速度: 1.0x
+    </div>
+    
+    <div class="message" id="message"></div>
+    
+    <div class="controls">
+        <button class="btn" onclick="changeTheme()">🎨 主题切换</button>
+        <button class="btn" onclick="toggleChars()">🔤 字符切换</button>
+        <button class="btn" onclick="toggleHighlight()">✨ 高亮模式</button>
+        <button class="btn" onclick="createRipple()">💧 涟漪效果</button>
+        <button class="btn" onclick="togglePause()">⏸️ 暂停</button>
+        <button class="btn" onclick="resetMatrix()">🔄 重置</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let columns;
+        let drops = [];
+        let speeds = [];
+        let mouseX = 0, mouseY = 0;
+        let speed = 1;
+        let isPaused = false;
+        
+        // 性能监控
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let currentFps = 60;
+        
+        // 主题配置
+        const themes = [
+            { name: '经典绿', color: '#00ff00', bg: 'rgba(0, 0, 0, 0.05)' },
+            { name: '赛博蓝', color: '#00ffff', bg: 'rgba(0, 0, 0, 0.05)' },
+            { name: '霓虹粉', color: '#ff00ff', bg: 'rgba(0, 0, 0, 0.05)' },
+            { name: '烈焰红', color: '#ff0044', bg: 'rgba(0, 0, 0, 0.05)' },
+            { name: '黄金色', color: '#ffcc00', bg: 'rgba(0, 0, 0, 0.05)' },
+            { name: '幽灵白', color: '#ffffff', bg: 'rgba(0, 0, 0, 0.05)' }
+        ];
+        let currentTheme = 0;
+        
+        // 字符集
+        const charSets = {
+            matrix: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789',
+            binary: '01',
+            hex: '0123456789ABCDEF',
+            chinese: '道德经上善若水厚德载物天地人和阴阳五行金木水火土风雷山泽乾坤离坎震艮巽兑',
+            symbols: '!@#$%^&*(){}[]|\\/<>~`±§',
+            numbers: '0123456789'
+        };
+        let currentCharSet = 'matrix';
+        let highlightMode = true;
+        
+        // 涟漪效果
+        let ripples = [];
+        
+        class Ripple {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = 0;
+                this.maxRadius = 200;
+                this.speed = 5;
+                this.alpha = 1;
+            }
+            
+            update() {
+                this.radius += this.speed;
+                this.alpha = 1 - (this.radius / this.maxRadius);
+                return this.radius < this.maxRadius;
+            }
+            
+            draw() {
+                const theme = themes[currentTheme];
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = theme.color;
+                ctx.globalAlpha = this.alpha * 0.5;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+            
+            affectDrops() {
+                const fontSize = 16;
+                const columnWidth = fontSize;
+                
+                drops.forEach((drop, i) => {
+                    const dropX = i * columnWidth;
+                    const dropY = drop * fontSize;
+                    const dx = dropX - this.x;
+                    const dy = dropY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    if (Math.abs(dist - this.radius) < 50) {
+                        const force = (1 - Math.abs(dist - this.radius) / 50) * 10;
+                        drops[i] += force * (dy > 0 ? 1 : -1);
+                    }
+                });
+            }
+        }
+        
+        // 初始化
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+            resetDrops();
+        }
+        
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            const fontSize = 16;
+            columns = Math.floor(width / fontSize);
+            
+            // 保持现有drops或创建新的
+            if (drops.length !== columns) {
+                resetDrops();
+            }
+        }
+        
+        function resetDrops() {
+            const fontSize = 16;
+            columns = Math.floor(width / fontSize);
+            drops = [];
+            speeds = [];
+            
+            for (let i = 0; i < columns; i++) {
+                drops[i] = Math.random() * -100;
+                speeds[i] = 0.5 + Math.random() * 0.5;
+            }
+        }
+        
+        // 获取随机字符
+        function getRandomChar() {
+            const chars = charSets[currentCharSet];
+            return chars[Math.floor(Math.random() * chars.length)];
+        }
+        
+        // 绘制矩阵雨
+        function drawMatrix() {
+            const fontSize = 16;
+            const theme = themes[currentTheme];
+            
+            // 半透明黑色背景，创造拖尾效果
+            ctx.fillStyle = theme.bg;
+            ctx.fillRect(0, 0, width, height);
+            
+            ctx.font = fontSize + 'px Courier New';
+            
+            for (let i = 0; i < drops.length; i++) {
+                const x = i * fontSize;
+                const y = drops[i] * fontSize;
+                
+                // 鼠标影响
+                const dx = x - mouseX;
+                const dy = y - mouseY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const influence = Math.max(0, 1 - dist / 300);
+                
+                // 绘制字符
+                if (highlightMode && drops[i] > 0 && drops[i] * fontSize < height) {
+                    // 头部字符（更亮）
+                    ctx.fillStyle = '#ffffff';
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = theme.color;
+                    ctx.fillText(getRandomChar(), x, y);
+                    ctx.shadowBlur = 0;
+                }
+                
+                // 主体字符
+                const alpha = highlightMode ? 0.8 : 1;
+                ctx.fillStyle = theme.color;
+                ctx.globalAlpha = alpha;
+                ctx.fillText(getRandomChar(), x, y);
+                ctx.globalAlpha = 1;
+                
+                // 绘制渐变尾迹
+                for (let j = 1; j <= 20; j++) {
+                    const trailY = y - j * fontSize;
+                    if (trailY > 0) {
+                        const trailAlpha = (1 - j / 20) * 0.5;
+                        ctx.fillStyle = theme.color;
+                        ctx.globalAlpha = trailAlpha;
+                        ctx.fillText(getRandomChar(), x, trailY);
+                    }
+                }
+                ctx.globalAlpha = 1;
+                
+                // 更新位置
+                if (!isPaused) {
+                    const baseSpeed = speeds[i] * speed;
+                    const mouseEffect = influence * 2 * (dy > 0 ? -1 : 1);
+                    drops[i] += baseSpeed + mouseEffect * 0.1;
+                    
+                    // 重置到顶部
+                    if (y > height && Math.random() > 0.975) {
+                        drops[i] = 0;
+                        speeds[i] = 0.5 + Math.random() * 0.5;
+                    }
+                }
+            }
+            
+            // 更新和绘制涟漪
+            ripples = ripples.filter(r => {
+                r.affectDrops();
+                const alive = r.update();
+                if (alive) r.draw();
+                return alive;
+            });
+        }
+        
+        // 动画循环
+        let lastTime = 0;
+        const targetFPS = 60;
+        const interval = 1000 / targetFPS;
+        
+        function animate(currentTime) {
+            requestAnimationFrame(animate);
+            
+            const delta = currentTime - lastTime;
+            if (delta < interval) return;
+            lastTime = currentTime - (delta % interval);
+            
+            // FPS计算
+            frameCount++;
+            if (currentTime - lastFpsUpdate >= 1000) {
+                currentFps = frameCount;
+                frameCount = 0;
+                lastFpsUpdate = currentTime;
+                updateStats();
+            }
+            
+            drawMatrix();
+        }
+        
+        function updateStats() {
+            document.getElementById('stats').textContent = 
+                `列: ${columns} | FPS: ${currentFps} | 速度: ${speed.toFixed(1)}x`;
+        }
+        
+        function showMessage(text) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.classList.add('show');
+            setTimeout(() => msg.classList.remove('show'), 2000);
+        }
+        
+        // 事件处理
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        
+        canvas.addEventListener('click', (e) => {
+            createRippleAt(e.clientX, e.clientY);
+        });
+        
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            speed = Math.max(0.2, Math.min(3, speed - e.deltaY * 0.001));
+            updateStats();
+        });
+        
+        // 控制函数
+        function changeTheme() {
+            currentTheme = (currentTheme + 1) % themes.length;
+            document.body.style.background = '#000';
+            showMessage(`主题: ${themes[currentTheme].name}`);
+            
+            // 更新按钮颜色
+            document.querySelectorAll('.btn').forEach(btn => {
+                btn.style.color = themes[currentTheme].color;
+                btn.style.borderColor = themes[currentTheme].color + '80';
+                btn.style.textShadow = `0 0 10px ${themes[currentTheme].color}`;
+            });
+            
+            document.querySelector('.title').style.color = themes[currentTheme].color;
+            document.querySelector('.title').style.textShadow = `
+                0 0 10px ${themes[currentTheme].color},
+                0 0 20px ${themes[currentTheme].color},
+                0 0 30px ${themes[currentTheme].color},
+                0 0 40px ${themes[currentTheme].color}
+            `;
+        }
+        
+        function toggleChars() {
+            const sets = Object.keys(charSets);
+            const currentIndex = sets.indexOf(currentCharSet);
+            currentCharSet = sets[(currentIndex + 1) % sets.length];
+            
+            const names = {
+                matrix: '日文片假名',
+                binary: '二进制',
+                hex: '十六进制',
+                chinese: '中文',
+                symbols: '符号',
+                numbers: '数字'
+            };
+            showMessage(`字符集: ${names[currentCharSet]}`);
+        }
+        
+        function toggleHighlight() {
+            highlightMode = !highlightMode;
+            showMessage(`高亮模式: ${highlightMode ? '开启' : '关闭'}`);
+        }
+        
+        function createRipple() {
+            createRippleAt(width / 2, height / 2);
+        }
+        
+        function createRippleAt(x, y) {
+            ripples.push(new Ripple(x, y));
+            showMessage('涟漪效果');
+        }
+        
+        function togglePause() {
+            isPaused = !isPaused;
+            const btn = event.target;
+            btn.textContent = isPaused ? '▶️ 播放' : '⏸️ 暂停';
+            btn.classList.toggle('active', isPaused);
+            showMessage(isPaused ? '已暂停' : '继续播放');
+        }
+        
+        function resetMatrix() {
+            resetDrops();
+            ripples = [];
+            speed = 1;
+            currentTheme = 0;
+            currentCharSet = 'matrix';
+            highlightMode = true;
+            showMessage('已重置');
+            updateStats();
+            
+            // 重置颜色
+            document.querySelectorAll('.btn').forEach(btn => {
+                btn.style.color = '#00ff00';
+                btn.style.borderColor = 'rgba(0, 255, 0, 0.5)';
+                btn.style.textShadow = '0 0 10px #00ff00';
+            });
+            
+            document.querySelector('.title').style.color = '#00ff00';
+            document.querySelector('.title').style.textShadow = `
+                0 0 10px #00ff00,
+                0 0 20px #00ff00,
+                0 0 30px #00ff00,
+                0 0 40px #00ff00
+            `;
+        }
+        
+        // 启动
+        init();
+        animate(0);
+        
+        // 键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            switch(e.key.toLowerCase()) {
+                case 't':
+                    changeTheme();
+                    break;
+                case 'c':
+                    toggleChars();
+                    break;
+                case 'h':
+                    toggleHighlight();
+                    break;
+                case 'r':
+                    createRipple();
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    togglePause();
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>
